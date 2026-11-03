@@ -20,3 +20,9 @@ wandb/
 .vscode/
 .idea/
 .DS_Store
+
+#Environment
+.env.local
+
+#Personal
+PLAN.md
