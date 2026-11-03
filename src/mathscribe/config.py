@@ -98,7 +98,7 @@ def apply_overrides(raw: dict[str, Any], overrides: list[str]) -> dict[str, Any]
     return out
 
 
-def _build_section(cls: type, name: str, values: Any) -> Any:
+def build_section(cls: type, name: str, values: Any) -> Any:
     values = values or {}
     if not isinstance(values, dict):
         raise ConfigError(f"Section {name!r} must be a mapping")
@@ -124,7 +124,7 @@ def config_from_dict(raw: dict[str, Any]) -> SFTRunConfig:
     cfg = SFTRunConfig(
         run_name=raw["run_name"],
         train=dict(train),
-        **{name: _build_section(cls, name, raw.get(name)) for name, cls in _SECTIONS.items()},
+        **{name: build_section(cls, name, raw.get(name)) for name, cls in _SECTIONS.items()},
     )
     if cfg.hub.push and not cfg.hub.repo_id:
         raise ConfigError("'hub.repo_id' is required when 'hub.push' is true")

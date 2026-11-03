@@ -1,0 +1,26 @@
+# The smoke adapter from configs/train/sft_smoke.yaml (15 steps).
+# Set the adapter from the command line (a Hub repo or a local folder):
+#   --set model.name=<hf-user>/mathscribe-sft-smoke
+run_name: sft_smoke
+
+model:
+  backend: unsloth
+  name: null                   # required
+  label: Qwen3.5-4B + LoRA (sft_smoke, 15 steps)
+  load_in_4bit: false          # the adapter was trained on the 16-bit base model
+
+generation:
+  instruction: Write the LaTeX representation for this image.
+  max_new_tokens: 512
+  batch_size: 8
+  chat_template_kwargs:
+    enable_thinking: false
+
+testset:
+  manifest: data/testsets/latex_ocr_test.json
+  subset: null
+
+output:
+  dir: outputs/eval
+  results_dir: reports/results
+  leaderboard: reports/leaderboard.md

@@ -1,0 +1,25 @@
+# Zero-shot baseline: the base model with the training prompt, no fine-tuning.
+run_name: qwen35_4b_zeroshot
+
+model:
+  backend: unsloth
+  name: unsloth/Qwen3.5-4B
+  label: Qwen3.5-4B (zero-shot)
+  load_in_4bit: false
+
+generation:
+  instruction: Write the LaTeX representation for this image.
+  max_new_tokens: 512
+  batch_size: 8
+  # Matches the training target ("<think>\n\n</think>\n\n" + answer). See formatting.py.
+  chat_template_kwargs:
+    enable_thinking: false
+
+testset:
+  manifest: data/testsets/latex_ocr_test.json
+  subset: null                 # all 1000 frozen rows; --subset N uses the first N
+
+output:
+  dir: outputs/eval
+  results_dir: reports/results
+  leaderboard: reports/leaderboard.md

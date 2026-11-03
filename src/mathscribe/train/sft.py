@@ -16,14 +16,13 @@ import json
 import logging
 import platform
 import re
-import subprocess
 import sys
 import time
-from importlib import metadata
 from pathlib import Path
 from typing import Any
 
 from mathscribe.config import SFTRunConfig, load_config
+from mathscribe.runinfo import git_commit, package_versions
 
 log = logging.getLogger("mathscribe.sft")
 
@@ -131,29 +130,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 # --------------------------------------------------------------------------- #
-# Run metadata
-# --------------------------------------------------------------------------- #
-def _git_commit() -> str | None:
-    try:
-        out = subprocess.run(
-            ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True
-        )
-        return out.stdout.strip()
-    except (OSError, subprocess.CalledProcessError):
-        return None
-
-
-def _versions(packages: list[str]) -> dict[str, str | None]:
-    out: dict[str, str | None] = {}
-    for name in packages:
-        try:
-            out[name] = metadata.version(name)
-        except metadata.PackageNotFoundError:
-            out[name] = None
-    return out
-
-
-# --------------------------------------------------------------------------- #
 # Training
 # --------------------------------------------------------------------------- #
 def run(cfg: SFTRunConfig, resume_from: Path | None = None) -> dict[str, Any]:
@@ -213,7 +189,7 @@ def run(cfg: SFTRunConfig, resume_from: Path | None = None) -> dict[str, Any]:
 
     info: dict[str, Any] = {
         "run_name": cfg.run_name,
-        "git_commit": _git_commit(),
+        "git_commit": git_commit(),
         "resumed_from": str(resume_from) if resume_from else None,
         "gpu": gpu_props.name,
         "gpu_total_memory_gb": round(gpu_props.total_memory / 1024**3, 3),
@@ -225,7 +201,7 @@ def run(cfg: SFTRunConfig, resume_from: Path | None = None) -> dict[str, Any]:
         "trainable_params": sum(p.numel() for p in model.parameters() if p.requires_grad),
         "total_params": sum(p.numel() for p in model.parameters()),
         "python": platform.python_version(),
-        "versions": _versions(
+        "versions": package_versions(
             ["mathscribe", "unsloth", "transformers", "trl", "peft", "torch", "datasets"]
         ),
         "config": cfg.to_dict(),
