@@ -1,4 +1,4 @@
-from mathscribe.data import INSTRUCTION, ConversationDataset, convert_to_conversation
+from mathscribe.data import INSTRUCTION, convert_to_conversation, to_conversation_batch
 
 
 def test_instruction_matches_notebook():
@@ -26,22 +26,10 @@ def test_convert_to_conversation_custom_instruction():
     assert conv["messages"][0]["content"][0]["text"] == "Transcribe."
 
 
-def test_conversation_dataset_is_lazy_and_ordered():
-    reads = []
-
-    class Rows:
-        def __len__(self):
-            return 3
-
-        def __getitem__(self, idx):
-            reads.append(idx)
-            return {"image": idx, "text": f"t{idx}"}
-
-    ds = ConversationDataset(Rows())
-    assert len(ds) == 3
-    assert reads == []  # nothing converted up front
-
-    item = ds[2]
-    assert reads == [2]
-    assert item["messages"][1]["content"][0]["text"] == "t2"
-    assert item["messages"][0]["content"][1]["image"] == 2
+def test_to_conversation_batch():
+    out = to_conversation_batch({"image": ["i0", "i1"], "text": ["t0", "t1"]}, "Do it.")
+    assert list(out) == ["messages"]
+    assert len(out["messages"]) == 2
+    user, assistant = out["messages"][1]
+    assert user["content"] == [{"type": "text", "text": "Do it."}, {"type": "image", "image": "i1"}]
+    assert assistant["content"][0]["text"] == "t1"
