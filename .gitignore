@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+build/
+dist/
+
+# Tools
+.pytest_cache/
+.ruff_cache/
+
+# Training artifacts
+outputs/
+qwen_lora/
+unsloth_compiled_cache/
+wandb/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store

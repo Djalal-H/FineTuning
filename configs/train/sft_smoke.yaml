@@ -1,0 +1,53 @@
+# Smoke run: reproduces notebooks/Qwen_3_5_SFT.ipynb (15 steps on a T4).
+# Hub push is off by default. Turn it on from the command line:
+#   --set hub.push=true --set hub.repo_id=<user>/mathscribe-sft-smoke
+run_name: sft_smoke
+
+model:
+  name: unsloth/Qwen3.5-4B
+  load_in_4bit: false          # 16-bit LoRA, as in the notebook (not QLoRA)
+  use_gradient_checkpointing: unsloth
+
+lora:
+  finetune_vision_layers: true
+  finetune_language_layers: true
+  finetune_attention_modules: true
+  finetune_mlp_modules: true
+  r: 16
+  lora_alpha: 16
+  lora_dropout: 0.0
+  bias: none
+  use_rslora: false
+  random_state: 2003
+
+data:
+  dataset: unsloth/LaTeX_OCR
+  split: train
+  max_train_samples: null      # full split; the sampler then picks the same rows as the notebook
+  instruction: Write the LaTeX representation for this image.
+
+hub:
+  push: false
+  repo_id: null
+  private: true
+
+# Keyword arguments for trl.SFTConfig. The vision-only arguments
+# (remove_unused_columns, dataset_text_field, dataset_kwargs) are set in code.
+train:
+  output_dir: outputs/sft_smoke
+  per_device_train_batch_size: 2
+  gradient_accumulation_steps: 4
+  warmup_steps: 5
+  max_steps: 15
+  learning_rate: 2.0e-4
+  logging_steps: 1
+  optim: adamw_8bit
+  weight_decay: 0.001
+  lr_scheduler_type: linear
+  seed: 3407
+  max_length: 2048
+  report_to: none
+  # Checkpoints (and Hub pushes when hub.push is true) every 5 steps.
+  save_strategy: steps
+  save_steps: 5
+  save_total_limit: 2
