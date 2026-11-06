@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from mathscribe.config import ConfigError
+from mathscribe.eval.bootstrap import per_row_scores, run_ci
 from mathscribe.eval.config import EvalRunConfig, load_eval_config
 from mathscribe.eval.leaderboard import write_leaderboard
 from mathscribe.eval.metrics import aggregate, aggregate_by_tag, difficulty_tags, score_sample
@@ -92,9 +93,12 @@ def evaluate(
             )
             last_log = now
     wall_clock_s = time.time() - t0
+    per_row = per_row_scores(scores)
     summary = {
         "metrics": aggregate(scores),
+        "ci95": run_ci(per_row) if scores else {},
         "buckets": aggregate_by_tag(scores, tags),
+        "per_row": per_row,
         "wall_clock_s": round(wall_clock_s, 1),
         "images_per_s": round(len(rows) / wall_clock_s, 3) if wall_clock_s > 0 else None,
     }
@@ -142,6 +146,7 @@ def run(
             "sha256": subset_hash(indices, hashes),
         },
         "metrics": summary["metrics"],
+        "ci95": summary["ci95"],
         "buckets": summary["buckets"],
         "runtime": runtime,
         "python": platform.python_version(),
@@ -149,6 +154,8 @@ def run(
             ["mathscribe", "unsloth", "transformers", "torch", "datasets"]
         ),
         "config": cfg.to_dict(),
+        # Per-row scores in the test set order, for the paired intervals of the leaderboard.
+        "per_row": summary["per_row"],
     }
 
     run_dir, result_file = run_paths(cfg, manifest.name, len(indices))
@@ -160,14 +167,19 @@ def run(
     (run_dir / "metrics.json").write_text(text)
     result_file.parent.mkdir(parents=True, exist_ok=True)
     result_file.write_text(text)
-    board = write_leaderboard(cfg.output.results_dir, cfg.output.leaderboard)
+    board = write_leaderboard(
+        cfg.output.results_dir, cfg.output.leaderboard, cfg.output.baseline_run
+    )
 
     m = result["metrics"]
+    lo, hi = result["ci95"]["normalized_match"]
     log.info(
-        "%s: exact %.1f%%, normalized %.1f%%, CER %.1f%%, BLEU %.1f (n=%d)",
+        "%s: exact %.1f%%, normalized %.1f%% (95%% CI %.1f-%.1f), CER %.1f%%, BLEU %.1f (n=%d)",
         cfg.label,
         100 * m["exact_match"],
         100 * m["normalized_match"],
+        100 * lo,
+        100 * hi,
         100 * m["cer"],
         100 * m["bleu"],
         m["n"],

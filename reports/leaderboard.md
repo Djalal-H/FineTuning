@@ -7,4 +7,27 @@ Metric definitions are in [`src/mathscribe/eval/metrics.py`](../src/mathscribe/e
 All rates are percentages. CER is better when it is lower. Each run has a JSON file in
 [`reports/results/`](results/).
 
-No results yet. Run `python -m mathscribe.eval.run_eval --config ...`.
+How to read the intervals (bootstrap, 2000 resamples, see
+[`src/mathscribe/eval/bootstrap.py`](../src/mathscribe/eval/bootstrap.py)):
+
+- `[low, high]` after a value is its 95% confidence interval.
+- *Δ vs baseline* is the normalized match of the run minus the normalized match of the
+  baseline run, on the same rows (paired). A `*` shows that the interval does not include 0,
+  so the difference is significant at the 5% level.
+- `-` shows that the result file has no per-row scores (runs before the intervals were added).
+
+## latex_ocr_test, n=100
+
+`unsloth/LaTeX_OCR` split `test` at revision `4da395c8a025`. Rows sha256 `36b9842e882ed166`. Baseline: `qwen35_4b_zeroshot`.
+
+| Model | Exact | Norm. match | Δ vs baseline | CER | BLEU | Empty | GPU | img/s | Commit | Date |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Qwen3.5-4B + LoRA (sft_smoke, 15 steps) | 41.0 | **57.0** | - | 6.5 | 89.9 | 0.0 | Tesla T4 | 0.32 | `acac284` | 2026-11-03 |
+| Qwen3.5-4B (zero-shot) | 37.0 | **50.0** | baseline | 6.5 | 89.4 | 0.0 | Tesla T4 | 0.68 | `acac284` | 2026-11-03 |
+
+Normalized match for each difficulty bucket (the number of rows is in brackets):
+
+| Model | len:short | len:medium | len:long | matrix | nested_frac |
+|---|---|---|---|---|---|
+| Qwen3.5-4B + LoRA (sft_smoke, 15 steps) | 71.7 (46) | 61.9 (21) | 33.3 (33) | 0.0 (6) | 0.0 (4) |
+| Qwen3.5-4B (zero-shot) | 63.0 (46) | 52.4 (21) | 30.3 (33) | 0.0 (6) | 0.0 (4) |

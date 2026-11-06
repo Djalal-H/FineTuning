@@ -11,7 +11,10 @@ import json
 from pathlib import Path
 from typing import Any
 
+from mathscribe.eval.bootstrap import paired_diff, run_statistics
+
 BUCKETS = ["len:short", "len:medium", "len:long", "matrix", "nested_frac"]
+DEFAULT_BASELINE = "qwen35_4b_zeroshot"
 
 HEADER = """# Leaderboard
 
@@ -21,6 +24,15 @@ Each table compares runs on the same frozen rows (same test set, same N, same sh
 Metric definitions are in [`src/mathscribe/eval/metrics.py`](../src/mathscribe/eval/metrics.py).
 All rates are percentages. CER is better when it is lower. Each run has a JSON file in
 [`reports/results/`](results/).
+
+How to read the intervals (bootstrap, 2000 resamples, see
+[`src/mathscribe/eval/bootstrap.py`](../src/mathscribe/eval/bootstrap.py)):
+
+- `[low, high]` after a value is its 95% confidence interval.
+- *Δ vs baseline* is the normalized match of the run minus the normalized match of the
+  baseline run, on the same rows (paired). A `*` shows that the interval does not include 0,
+  so the difference is significant at the 5% level.
+- `-` shows that the result file has no per-row scores (runs before the intervals were added).
 """
 
 
@@ -32,24 +44,51 @@ def _pct(value: float | None) -> str:
     return "-" if value is None else f"{100 * value:.1f}"
 
 
-def _section(results: list[dict[str, Any]]) -> list[str]:
+def _with_ci(result: dict[str, Any], metric: str) -> str:
+    value = _pct(result["metrics"][metric])
+    interval = result.get("ci95", {}).get(metric)
+    if not interval:
+        return value
+    return f"{value} [{_pct(interval[0])}, {_pct(interval[1])}]"
+
+
+def _delta_vs_baseline(result: dict[str, Any], baseline: dict[str, Any] | None) -> str:
+    if baseline is None:
+        return "-"
+    if result is baseline:
+        return "baseline"
+    if "per_row" not in result or "per_row" not in baseline:
+        return "-"
+    n_a, stats_a = run_statistics(result["per_row"])
+    n_b, stats_b = run_statistics(baseline["per_row"])
+    if n_a != n_b:
+        return "-"
+    delta, lo, hi = paired_diff(stats_a["normalized_match"], stats_b["normalized_match"], n_a)
+    mark = " *" if lo > 0 or hi < 0 else ""
+    return f"{100 * delta:+.1f} [{100 * lo:+.1f}, {100 * hi:+.1f}]{mark}"
+
+
+def _section(results: list[dict[str, Any]], baseline_run: str | None) -> list[str]:
     ts = results[0]["testset"]
+    baseline = next((r for r in results if r.get("run_name") == baseline_run), None)
     lines = [
         f"## {ts['name']}, n={ts['n']}",
         "",
         f"`{ts['dataset']}` split `{ts['split']}` at revision `{ts['revision'][:12]}`. "
-        f"Rows sha256 `{ts['sha256'][:16]}`.",
+        f"Rows sha256 `{ts['sha256'][:16]}`. Baseline: `{baseline_run or '-'}`.",
         "",
-        "| Model | Exact | Norm. match | CER | BLEU | Empty | GPU | img/s | Commit | Date |",
-        "|---|---|---|---|---|---|---|---|---|---|",
+        "| Model | Exact | Norm. match | Δ vs baseline | CER | BLEU | Empty "
+        "| GPU | img/s | Commit | Date |",
+        "|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     ranked = sorted(results, key=lambda r: (-r["metrics"]["normalized_match"], r["label"]))
     for r in ranked:
         m, rt = r["metrics"], r.get("runtime", {})
         ips = rt.get("images_per_s")
         lines.append(
-            f"| {r['label']} | {_pct(m['exact_match'])} | **{_pct(m['normalized_match'])}** "
-            f"| {_pct(m['cer'])} | {_pct(m['bleu'])} | {_pct(m['empty_rate'])} "
+            f"| {r['label']} | {_pct(m['exact_match'])} | **{_with_ci(r, 'normalized_match')}** "
+            f"| {_delta_vs_baseline(r, baseline)} | {_with_ci(r, 'cer')} "
+            f"| {_pct(m['bleu'])} | {_pct(m['empty_rate'])} "
             f"| {rt.get('gpu', '-')} | {'-' if ips is None else f'{ips:.2f}'} "
             f"| `{(r.get('git_commit') or '-')[:7]}` | {r.get('date', '-')} |"
         )
@@ -72,7 +111,9 @@ def _section(results: list[dict[str, Any]]) -> list[str]:
     return [*lines, ""]
 
 
-def render_leaderboard(results: list[dict[str, Any]]) -> str:
+def render_leaderboard(
+    results: list[dict[str, Any]], baseline_run: str | None = DEFAULT_BASELINE
+) -> str:
     groups: dict[tuple[str, int, str], list[dict[str, Any]]] = {}
     for r in results:
         ts = r["testset"]
@@ -82,14 +123,16 @@ def render_leaderboard(results: list[dict[str, Any]]) -> str:
         lines.append("No results yet. Run `python -m mathscribe.eval.run_eval --config ...`.\n")
     # Larger test sets first: they are the reference numbers. Smoke subsets come after.
     for key in sorted(groups, key=lambda k: (k[0], -k[1], k[2])):
-        lines += _section(groups[key])
+        lines += _section(groups[key], baseline_run)
     return "\n".join(lines)
 
 
-def write_leaderboard(results_dir: str | Path, out: str | Path) -> Path:
+def write_leaderboard(
+    results_dir: str | Path, out: str | Path, baseline_run: str | None = DEFAULT_BASELINE
+) -> Path:
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(render_leaderboard(load_results(results_dir)))
+    out.write_text(render_leaderboard(load_results(results_dir), baseline_run))
     return out
 
 
@@ -99,8 +142,11 @@ def main(argv: list[str] | None = None) -> None:
     )
     p.add_argument("--results-dir", default="reports/results")
     p.add_argument("--out", default="reports/leaderboard.md")
+    p.add_argument(
+        "--baseline", default=DEFAULT_BASELINE, help="run_name for the Δ column (paired CI)"
+    )
     args = p.parse_args(argv)
-    print(f"Wrote {write_leaderboard(args.results_dir, args.out)}")
+    print(f"Wrote {write_leaderboard(args.results_dir, args.out, args.baseline)}")
 
 
 if __name__ == "__main__":

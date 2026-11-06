@@ -1,0 +1,106 @@
+{
+  "run_name": "sft_smoke",
+  "label": "Qwen3.5-4B + LoRA (sft_smoke, 15 steps)",
+  "date": "2026-11-03",
+  "git_commit": "acac28459203cfda7f1f4bd3f6a6bee7aa13df15",
+  "testset": {
+    "name": "latex_ocr_test",
+    "manifest": "data/testsets/latex_ocr_test.json",
+    "dataset": "unsloth/LaTeX_OCR",
+    "revision": "4da395c8a0253f4f30983cf08f2480f9bafbd561",
+    "split": "test",
+    "n": 100,
+    "sha256": "36b9842e882ed166916b8bd158d5e0913cdbd571afe841de4ba8a7e773d2dfaa"
+  },
+  "metrics": {
+    "n": 100,
+    "exact_match": 0.41,
+    "normalized_match": 0.57,
+    "cer": 0.06545734576880294,
+    "bleu": 0.8991798573382414,
+    "empty_rate": 0.0
+  },
+  "buckets": {
+    "len:long": {
+      "n": 33,
+      "exact_match": 0.18181818181818182,
+      "normalized_match": 0.3333333333333333,
+      "cer": 0.07263729246487867,
+      "bleu": 0.879886245136976,
+      "empty_rate": 0.0
+    },
+    "len:medium": {
+      "n": 21,
+      "exact_match": 0.38095238095238093,
+      "normalized_match": 0.6190476190476191,
+      "cer": 0.06689103912494741,
+      "bleu": 0.9214352003925936,
+      "empty_rate": 0.0
+    },
+    "len:short": {
+      "n": 46,
+      "exact_match": 0.5869565217391305,
+      "normalized_match": 0.717391304347826,
+      "cer": 0.04957321076822062,
+      "bleu": 0.9234394545248903,
+      "empty_rate": 0.0
+    },
+    "matrix": {
+      "n": 6,
+      "exact_match": 0.0,
+      "normalized_match": 0.0,
+      "cer": 0.1682825484764543,
+      "bleu": 0.767869704730093,
+      "empty_rate": 0.0
+    },
+    "nested_frac": {
+      "n": 4,
+      "exact_match": 0.0,
+      "normalized_match": 0.0,
+      "cer": 0.05847953216374269,
+      "bleu": 0.8411209301764148,
+      "empty_rate": 0.0
+    }
+  },
+  "runtime": {
+    "wall_clock_s": 315.1,
+    "images_per_s": 0.317,
+    "gpu": "Tesla T4",
+    "gpu_total_memory_gb": 14.563,
+    "peak_reserved_memory_gb": 9.371
+  },
+  "python": "3.13.16",
+  "versions": {
+    "mathscribe": "0.1.0",
+    "unsloth": "2026.11.1",
+    "transformers": "5.17.0",
+    "torch": "2.11.0+cu130",
+    "datasets": "4.8.5"
+  },
+  "config": {
+    "run_name": "sft_smoke",
+    "model": {
+      "backend": "unsloth",
+      "name": "djaloul/mathscribe-sft-smoke",
+      "label": "Qwen3.5-4B + LoRA (sft_smoke, 15 steps)",
+      "load_in_4bit": false
+    },
+    "generation": {
+      "instruction": "Write the LaTeX representation for this image.",
+      "max_new_tokens": 512,
+      "batch_size": 8,
+      "chat_template_kwargs": {
+        "enable_thinking": false
+      }
+    },
+    "testset": {
+      "manifest": "data/testsets/latex_ocr_test.json",
+      "subset": 100
+    },
+    "output": {
+      "dir": "/content/outputs/eval",
+      "results_dir": "reports/results",
+      "leaderboard": "reports/leaderboard.md"
+    }
+  }
+}

@@ -109,6 +109,11 @@ the training target. The same `extract_latex` rules (code fences, `$…$` wrappe
 apply to every model. The metric definitions are in
 [`src/mathscribe/eval/metrics.py`](src/mathscribe/eval/metrics.py).
 
+The leaderboard shows a 95% bootstrap confidence interval for normalized match and CER.
+It also shows each run's normalized match minus the zero-shot baseline, on the same rows
+(a paired interval, [`bootstrap.py`](src/mathscribe/eval/bootstrap.py)). A `*` marks a
+difference that is significant at the 5% level.
+
 ## License
 
 MIT.

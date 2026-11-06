@@ -77,6 +77,12 @@ def test_run_writes_predictions_result_and_leaderboard(tmp_path, manifest, sourc
 
     saved = json.loads((tmp_path / "results" / "fake__toy_n4.json").read_text())
     assert saved["metrics"] == result["metrics"]
+    # Per-row scores in the test set order, and the intervals.
+    column = "".join("1" if i % 2 == 0 else "0" for i, _ in indices)
+    assert saved["per_row"]["normalized_match"] == column
+    assert len(saved["per_row"]["char_edits"]) == 4
+    lo, hi = saved["ci95"]["normalized_match"]
+    assert lo <= saved["metrics"]["normalized_match"] <= hi
     board = (tmp_path / "leaderboard.md").read_text()
     assert "## toy, n=4" in board
     assert "| Fake model |" in board

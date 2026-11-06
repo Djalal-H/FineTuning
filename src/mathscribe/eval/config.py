@@ -50,6 +50,8 @@ class OutputConfig:
     dir: str = "outputs/eval"  # predictions.jsonl and metrics.json for each run
     results_dir: str = "reports/results"  # one small JSON per run, read by the leaderboard
     leaderboard: str = "reports/leaderboard.md"
+    # The leaderboard shows each run's difference to this run (paired 95% interval).
+    baseline_run: str | None = "qwen35_4b_zeroshot"
 
 
 @dataclass

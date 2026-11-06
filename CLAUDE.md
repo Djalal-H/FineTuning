@@ -70,4 +70,5 @@ Facts to remember:
 - The Qwen3.5 chat template trains on `<think>\n\n</think>\n\n` + answer. Inference must use `enable_thinking: false`. Without it, the prompt ends with `<think>\n` and the model starts to think.
 - `--subset N` uses the first N manifest rows. The rows are in random order, so each prefix is a random sample. Each N has its own sha256 and its own leaderboard table.
 - The `jsonl` backend scores a stored `predictions.jsonl` again, with no GPU. Use it after a metric change.
-- The `UnslothPredictor` (batched generation, left padding) has no GPU test yet. The first Colab run is its test.
+- The `UnslothPredictor` worked on Colab (T4, n=100). The zero-shot model got 50% normalized match, and the smoke adapter got 57%.
+- Each result JSON stores `ci95` and `per_row` scores. The leaderboard uses `per_row` for the paired "Δ vs baseline" interval (`output.baseline_run`). Result files without `per_row` show "-".
