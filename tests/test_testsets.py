@@ -5,7 +5,9 @@ import pytest
 from mathscribe.eval.testsets import (
     Manifest,
     ManifestError,
+    excluded_complement,
     load_testset,
+    overlap_count,
     row_hash,
     sample_indices,
     subset_hash,
@@ -86,3 +88,91 @@ def test_committed_manifest_is_consistent():
     assert len(m.revision) == 40
     assert len(set(m.indices)) == len(m)
     assert m.sha256 == subset_hash(m.indices, m.row_hashes)
+
+
+def test_manifest_with_other_column_names(tmp_path, source_ds):
+    # CROHME stores the formula in "label", not "text".
+    from mathscribe.eval.testsets import hash_rows
+
+    crohme = source_ds.rename_column("text", "label")
+    indices = sample_indices(len(crohme), 3, seed=1)
+    hashes = hash_rows(crohme.select(indices), "image", "label")
+    m = Manifest(
+        name="toy_crohme",
+        dataset="local/crohme",
+        revision="0" * 40,
+        split="2014",
+        seed=1,
+        source_rows=len(crohme),
+        indices=indices,
+        row_hashes=hashes,
+        sha256=subset_hash(indices, hashes),
+        text_column="label",
+    )
+    m = Manifest.from_json(m.to_json())
+    assert m.text_column == "label"
+    rows = load_testset(m, source=crohme)
+    assert rows.column_names == ["image", "text", "source_index"]
+    assert rows["text"] == [crohme[i]["label"] for i in indices]
+    # Same rows, same hashes as with the default column names.
+    assert hashes == hash_rows(source_ds.select(indices))
+
+
+def test_old_manifests_default_to_image_and_text_columns():
+    m = Manifest.load(FROZEN)
+    assert (m.image_column, m.text_column) == ("image", "text")
+
+
+def test_excluded_complement(manifest):
+    m = Manifest.load(manifest)
+    keep = excluded_complement(6, "local/toy", "test", None, [m])
+    assert sorted(keep + m.indices) == list(range(6))
+    assert not set(keep) & set(m.indices)
+    assert keep == sorted(keep)
+
+
+@pytest.mark.parametrize(
+    ("dataset", "split", "num_rows", "revision", "match"),
+    [
+        ("other/ds", "test", 6, None, "not other/ds"),
+        ("local/toy", "train", 6, None, "not local/toy/train"),
+        ("local/toy", "test", 7, None, "7 rows"),
+        ("local/toy", "test", 6, "1" * 40, "revision"),
+    ],
+)
+def test_excluded_complement_rejects_another_split(
+    manifest, dataset, split, num_rows, revision, match
+):
+    with pytest.raises(ManifestError, match=match):
+        excluded_complement(num_rows, dataset, split, revision, [Manifest.load(manifest)])
+
+
+def test_overlap_count_uses_the_canonical_form():
+    assert overlap_count(["x ^ { 2 }", "a", "b"], ["x^2", "c", "a"]) == 2
+
+
+@pytest.mark.parametrize("path", sorted(FROZEN.parent.glob("*.json")), ids=lambda p: p.name)
+def test_all_committed_manifests_are_consistent(path):
+    m = Manifest.load(path)
+    assert len(set(m.indices)) == len(m)
+    assert all(0 <= i < m.source_rows for i in m.indices)
+    assert len(m.revision) == 40
+
+
+def test_val_and_crohme_manifests():
+    val = Manifest.load(FROZEN.parent / "latex_ocr_val.json")
+    assert (val.dataset, val.split, len(val), val.source_rows) == (
+        "unsloth/LaTeX_OCR",
+        "train",
+        1000,
+        68686,
+    )
+    test = Manifest.load(FROZEN)
+    assert val.revision == test.revision
+    crohme = Manifest.load(FROZEN.parent / "crohme2014.json")
+    assert (crohme.dataset, crohme.split, len(crohme), crohme.text_column) == (
+        "Neeze/CROHME-full",
+        "2014",
+        986,
+        "label",
+    )

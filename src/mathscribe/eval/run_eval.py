@@ -30,15 +30,23 @@ from mathscribe.config import ConfigError
 from mathscribe.eval.bootstrap import per_row_scores, run_ci
 from mathscribe.eval.config import EvalRunConfig, load_eval_config
 from mathscribe.eval.leaderboard import write_leaderboard
-from mathscribe.eval.metrics import aggregate, aggregate_by_tag, difficulty_tags, score_sample
+from mathscribe.eval.metrics import (
+    SCORER_VERSION,
+    aggregate,
+    aggregate_by_tag,
+    difficulty_tags,
+    score_sample,
+)
 from mathscribe.eval.normalize import extract_latex
+from mathscribe.eval.render import render_scores
 from mathscribe.eval.testsets import Manifest, load_testset, subset_hash
-from mathscribe.runinfo import git_commit, package_versions
+from mathscribe.runinfo import git_commit, git_dirty, package_versions
 
 if TYPE_CHECKING:
     from datasets import Dataset
 
     from mathscribe.eval.predictors import Predictor
+    from mathscribe.eval.render import Renderer
 
 log = logging.getLogger("mathscribe.eval")
 
@@ -46,9 +54,12 @@ LOG_EVERY_S = 30.0
 
 
 def evaluate(
-    predictor: Predictor, rows: Dataset, batch_size: int
+    predictor: Predictor, rows: Dataset, batch_size: int, renderer: Renderer | None = None
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    """Run the predictor on all rows. Return the per-row records and the summary."""
+    """Run the predictor on all rows. Return the per-row records and the summary.
+
+    With a ``renderer``, each row also gets the compile and render scores.
+    """
     records: list[dict[str, Any]] = []
     scores: list[dict[str, Any]] = []
     tags: list[list[str]] = []
@@ -65,6 +76,8 @@ def evaluate(
         for index, reference, raw in zip(batch["source_index"], batch["text"], raws, strict=True):
             prediction = extract_latex(raw)
             score = score_sample(prediction, reference)
+            if renderer is not None:
+                score.update(render_scores(renderer, prediction, reference))
             sample_tags = difficulty_tags(reference)
             scores.append(score)
             tags.append(sample_tags)
@@ -80,6 +93,13 @@ def evaluate(
                     "tags": sample_tags,
                 }
             )
+            if renderer is not None:
+                records[-1].update(
+                    compiles=score["compiles"],
+                    compile_error=score["compile_error"],
+                    render_match=score["render_match"],
+                    render_similarity=score["render_similarity"],
+                )
         now = time.time()
         if now - last_log >= LOG_EVERY_S or len(records) == len(rows):
             done = len(records)
@@ -126,7 +146,17 @@ def run(
 
         predictor = build_predictor(cfg.model, cfg.generation)
 
-    records, summary = evaluate(predictor, rows, cfg.generation.batch_size)
+    renderer = None
+    if cfg.render.enabled:
+        from mathscribe.eval.render import Renderer
+
+        renderer = Renderer(timeout_s=cfg.render.timeout_s, cache_dir=cfg.render.cache_dir)
+        log.info("Renderer: %s", renderer.version)
+    try:
+        records, summary = evaluate(predictor, rows, cfg.generation.batch_size, renderer)
+    finally:
+        if renderer is not None:
+            renderer.close()
 
     # A replayed run (backend jsonl) keeps the timing of the original run.
     runtime = {"wall_clock_s": summary["wall_clock_s"], "images_per_s": summary["images_per_s"]}
@@ -136,6 +166,8 @@ def run(
         "label": cfg.label,
         "date": datetime.date.today().isoformat(),
         "git_commit": git_commit(),
+        "git_dirty": git_dirty(),  # True: the code had uncommitted changes
+        "scorer_version": SCORER_VERSION,
         "testset": {
             "name": manifest.name,
             "manifest": cfg.testset.manifest,
@@ -149,6 +181,7 @@ def run(
         "ci95": summary["ci95"],
         "buckets": summary["buckets"],
         "runtime": runtime,
+        "renderer": renderer.version if renderer is not None else None,
         "python": platform.python_version(),
         "versions": package_versions(
             ["mathscribe", "unsloth", "transformers", "torch", "datasets"]
@@ -172,6 +205,13 @@ def run(
     )
 
     m = result["metrics"]
+    if m.get("render_match") is not None:
+        log.info(
+            "Compile %.1f%%, render match %.1f%% (references that render: %.1f%%)",
+            100 * m["compile_rate"],
+            100 * m["render_match"],
+            100 * m["ref_render_rate"],
+        )
     lo, hi = result["ci95"]["normalized_match"]
     log.info(
         "%s: exact %.1f%%, normalized %.1f%% (95%% CI %.1f-%.1f), CER %.1f%%, BLEU %.1f (n=%d)",
@@ -211,6 +251,8 @@ def main(argv: list[str] | None = None) -> None:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
+    # Some backends (pix2tex) change the root logger level. Our logger keeps its own.
+    logging.getLogger("mathscribe").setLevel(logging.INFO)
     args = parse_args(argv)
     overrides = list(args.overrides)
     if args.subset is not None:

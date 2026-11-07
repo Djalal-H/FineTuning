@@ -1,0 +1,16 @@
+# General OCR baseline: GOT-OCR 2.0 (580M), formatted output (LaTeX for math).
+# Runs locally on a small GPU. Needs the baselines extra (uv sync --extra baselines).
+run_name: got_ocr2
+
+model:
+  backend: got_ocr
+  name: stepfun-ai/GOT-OCR-2.0-hf
+  label: GOT-OCR 2.0 (format mode)
+
+generation:
+  max_new_tokens: 512
+  batch_size: 2          # GOT-OCR used 5.3 GB for a batch of 2 on a 6 GB GPU
+
+testset:
+  manifest: data/testsets/latex_ocr_test.json
+  subset: null

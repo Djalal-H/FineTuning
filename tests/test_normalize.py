@@ -119,9 +119,82 @@ def test_frac_depth(latex, depth):
         ("<think>\nlet me see\n</think>\n\n$z$", "z"),
         ("<think>\n\n</think>\n\nz", "z"),
         ("<think>\nstill thinking", ""),
+        # text after the first closing delimiter is not part of the formula
+        ("\\[\nx+1\n\\]\\]\\]\\]", "x+1"),
+        ("\\(a_{i}\\).\n}", "a_{i}"),
+        ("$x$ and $y$", "x"),
+        ("$$a$$ b", "a"),
         # matrix environments are content, not wrappers
         (r"\begin{array}{c} a \end{array}", r"\begin{array}{c} a \end{array}"),
     ],
 )
 def test_extract_latex(raw, latex):
     assert extract_latex(raw) == latex
+
+
+@pytest.mark.parametrize(
+    ("a", "b"),
+    [
+        # cell braces and empty cells
+        (
+            r"\begin { a r r a y } { c c } { \beta _ \gamma } & { } \\ { } & { x } "
+            r"\end { a r r a y }",
+            r"\begin{array}{cc} \beta_\gamma & \\ & x \end{array}",
+        ),
+        # a row break before \end adds no row
+        (
+            r"\begin{matrix} a & b \\ c & d \\ \end{matrix}",
+            r"\begin{matrix} a & b \\ c & d \end{matrix}",
+        ),
+        # the first cell of an array is not merged with the column spec
+        (r"\begin{array}{c} {a b} \end{array}", r"\begin{array}{c} a b \end{array}"),
+        # nested environments
+        (
+            r"\begin{matrix} { \begin{matrix} {x y} \end{matrix} } & z \end{matrix}",
+            r"\begin{matrix} \begin{matrix} x y \end{matrix} & z \end{matrix}",
+        ),
+    ],
+)
+def test_environment_cells_have_one_canonical_form(a, b):
+    assert normalize(a) == normalize(b)
+
+
+def test_cell_rules_apply_only_in_environments():
+    # Outside an environment, "&" and "\\" are plain tokens and braces stay.
+    assert normalize(r"{ a b } & c") == "{ a b } & c"
+    assert normalize(r"{ a b } \\ c") == r"{ a b } \\ c"
+
+
+def test_cell_rules_keep_a_row_break_between_rows():
+    assert normalize(r"\begin{matrix} a \\ b \end{matrix}").count("\\\\") == 1
+
+
+@pytest.mark.parametrize(
+    ("a", "b"),
+    [
+        (r"\begin{array}{l} \frac{a}{b} < 1 \end{array}", r"\frac{a}{b} < 1"),
+        (r"\begin{aligned} x = y \end{aligned}", "x = y"),
+        (r"( \begin{matrix} x \end{matrix} )", "( x )"),
+        # nested one-cell environments
+        (r"\begin{array}{c} \begin{array}{l} x \end{array} \end{array}", "x"),
+        # the inner environment has cells, the outer one has one cell
+        (
+            r"\begin{array}{c} \begin{matrix} a & b \end{matrix} \end{array}",
+            r"\begin{matrix} a & b \end{matrix}",
+        ),
+    ],
+)
+def test_one_cell_environment_is_its_content(a, b):
+    assert normalize(a) == normalize(b)
+
+
+@pytest.mark.parametrize(
+    "latex",
+    [
+        r"\begin{array}{cc} a & b \end{array}",
+        r"\begin{matrix} a \\ b \end{matrix}",
+        r"\begin{cases} a \end{cases}",  # not in the list: cases adds a brace
+    ],
+)
+def test_environments_with_cells_or_other_names_stay(latex):
+    assert "\\begin" in normalize(latex)

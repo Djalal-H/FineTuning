@@ -36,11 +36,23 @@ def as_conversations(ds: Dataset, instruction: str = INSTRUCTION) -> Dataset:
     return ds.with_transform(partial(to_conversation_batch, instruction=instruction))
 
 
+def select_training_rows(ds: Dataset, cfg: DataConfig) -> Dataset:
+    """Remove the rows of the ``cfg.exclude`` manifests (e.g. the val set)."""
+    if not cfg.exclude:
+        return ds
+    from mathscribe.eval.testsets import Manifest, excluded_complement
+
+    manifests = [Manifest.load(path) for path in cfg.exclude]
+    keep = excluded_complement(len(ds), cfg.dataset, cfg.split, cfg.revision, manifests)
+    return ds.select(keep)
+
+
 def load_latex_ocr(cfg: DataConfig) -> Dataset:
     """Load the configured split of ``unsloth/LaTeX_OCR`` (or a compatible dataset)."""
     from datasets import load_dataset
 
-    ds = load_dataset(cfg.dataset, split=cfg.split)
+    ds = load_dataset(cfg.dataset, split=cfg.split, revision=cfg.revision)
+    ds = select_training_rows(ds, cfg)
     if cfg.max_train_samples is not None:
         ds = ds.select(range(min(cfg.max_train_samples, len(ds))))
     return as_conversations(ds, cfg.instruction)

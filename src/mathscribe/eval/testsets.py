@@ -6,10 +6,18 @@ has a hash of its image bytes and its text. The rows are in random order, so the
 N rows (``--subset N``) are also a uniform random sample, and smaller subsets are
 prefixes of larger ones.
 
+The same manifest format freezes a validation set. Training then excludes its rows
+(``data.exclude`` in a train config, see ``excluded_complement``).
+
 Usage:
     python -m mathscribe.eval.testsets freeze --dataset unsloth/LaTeX_OCR --split test \\
         --n 1000 --seed 2026 --out data/testsets/latex_ocr_test.json
+    python -m mathscribe.eval.testsets freeze --dataset Neeze/CROHME-full --split 2014 \\
+        --n 986 --text-column label --out data/testsets/crohme2014.json
     python -m mathscribe.eval.testsets verify data/testsets/latex_ocr_test.json
+    # How many frozen formulas also occur in the training rows (canonical form):
+    python -m mathscribe.eval.testsets overlap data/testsets/latex_ocr_test.json \\
+        --split train --exclude data/testsets/latex_ocr_val.json
 """
 
 from __future__ import annotations
@@ -46,6 +54,8 @@ class Manifest:
     row_hashes: list[str]
     sha256: str
     created: str = ""
+    image_column: str = "image"
+    text_column: str = "text"
 
     def __len__(self) -> int:
         return len(self.indices)
@@ -113,12 +123,36 @@ def _image_bytes(image: dict[str, Any]) -> bytes:
     return Path(image["path"]).read_bytes()
 
 
-def hash_rows(ds: Dataset) -> list[str]:
-    """Row hashes of a dataset with an ``image`` and a ``text`` column."""
+def hash_rows(ds: Dataset, image_column: str = "image", text_column: str = "text") -> list[str]:
+    """Row hashes of a dataset with an image column and a text column."""
     from datasets import Image
 
-    raw = ds.cast_column("image", Image(decode=False))
-    return [row_hash(_image_bytes(r["image"]), r["text"]) for r in raw]
+    raw = ds.select_columns([image_column, text_column]).cast_column(
+        image_column, Image(decode=False)
+    )
+    return [row_hash(_image_bytes(r[image_column]), r[text_column]) for r in raw]
+
+
+def excluded_complement(
+    num_rows: int, dataset: str, split: str, revision: str | None, exclude: list[Manifest]
+) -> list[int]:
+    """The row indices of a split that are in none of the ``exclude`` manifests.
+
+    Each manifest must describe the same dataset, split, revision and row count.
+    Training uses this to keep the validation rows out of the training set.
+    """
+    excluded: set[int] = set()
+    for m in exclude:
+        expected = (dataset, split, num_rows)
+        if (m.dataset, m.split, m.source_rows) != expected:
+            raise ManifestError(
+                f"manifest {m.name!r} is for {m.dataset}/{m.split} ({m.source_rows} rows), "
+                f"not {dataset}/{split} ({num_rows} rows)"
+            )
+        if revision is not None and m.revision != revision:
+            raise ManifestError(f"manifest {m.name!r} is for revision {m.revision}, not {revision}")
+        excluded.update(m.indices)
+    return [i for i in range(num_rows) if i not in excluded]
 
 
 # --------------------------------------------------------------------------- #
@@ -138,12 +172,19 @@ def _load_split(dataset: str, split: str, revision: str) -> Dataset:
 
 
 def freeze(
-    dataset: str, split: str, n: int, seed: int, name: str, revision: str | None = None
+    dataset: str,
+    split: str,
+    n: int,
+    seed: int,
+    name: str,
+    revision: str | None = None,
+    image_column: str = "image",
+    text_column: str = "text",
 ) -> Manifest:
     sha = resolve_revision(dataset, revision)
     ds = _load_split(dataset, split, sha)
     indices = sample_indices(len(ds), n, seed)
-    hashes = hash_rows(ds.select(indices))
+    hashes = hash_rows(ds.select(indices), image_column, text_column)
     return Manifest(
         name=name,
         dataset=dataset,
@@ -155,6 +196,8 @@ def freeze(
         row_hashes=hashes,
         sha256=subset_hash(indices, hashes),
         created=datetime.date.today().isoformat(),
+        image_column=image_column,
+        text_column=text_column,
     )
 
 
@@ -174,12 +217,24 @@ def load_testset(
             f"{manifest.dataset}/{manifest.split} has {len(source)} rows, "
             f"the manifest expects {manifest.source_rows}"
         )
+    ic, tc = manifest.image_column, manifest.text_column
     rows = source.select(indices)
-    actual = hash_rows(rows)
+    actual = hash_rows(rows, ic, tc)
     bad = [i for i, a, e in zip(indices, actual, expected, strict=True) if a != e]
     if bad:
         raise ManifestError(f"{len(bad)} rows do not match the manifest (first: {bad[:5]})")
+    rows = rows.select_columns([ic, tc])
+    if (ic, tc) != ("image", "text"):
+        rows = rows.rename_columns({ic: "image", tc: "text"})
     return rows.add_column("source_index", indices)
+
+
+def overlap_count(texts: list[str], other_texts: list[str]) -> int:
+    """How many ``texts`` have the same canonical form as one of ``other_texts``."""
+    from mathscribe.eval.normalize import normalize
+
+    seen = {normalize(t) for t in other_texts}
+    return sum(normalize(t) in seen for t in texts)
 
 
 # --------------------------------------------------------------------------- #
@@ -198,18 +253,49 @@ def main(argv: list[str] | None = None) -> None:
     f.add_argument("--seed", type=int, default=2026)
     f.add_argument("--revision", default=None, help="Dataset revision (default: main)")
     f.add_argument("--name", default=None, help="Test set name (default: the file stem)")
+    f.add_argument("--image-column", default="image")
+    f.add_argument("--text-column", default="text")
     f.add_argument("--out", type=Path, required=True)
     f.add_argument("--force", action="store_true", help="Overwrite an existing manifest")
 
     v = sub.add_parser("verify", help="Download the rows and check them against the manifest")
     v.add_argument("manifest", type=Path)
 
+    o = sub.add_parser("overlap", help="Count frozen formulas that occur in another split")
+    o.add_argument("manifest", type=Path)
+    o.add_argument("--split", default="train", help="Split of the same dataset and revision")
+    o.add_argument("--exclude", type=Path, action="append", default=[], help="Manifests to skip")
+
     args = p.parse_args(argv)
-    if args.command == "freeze":
+    if args.command == "overlap":
+        manifest = Manifest.load(args.manifest)
+        rows = load_testset(manifest)
+        other = _load_split(manifest.dataset, args.split, manifest.revision)
+        keep = excluded_complement(
+            len(other),
+            manifest.dataset,
+            args.split,
+            manifest.revision,
+            [Manifest.load(path) for path in args.exclude],
+        )
+        other_texts = other.select_columns([manifest.text_column]).select(keep)
+        count = overlap_count(rows["text"], other_texts[manifest.text_column])
+        print(
+            f"{manifest.name}: {count} of {len(rows)} formulas ({100 * count / len(rows):.1f}%) "
+            f"occur in {manifest.dataset}/{args.split} ({len(keep)} rows, canonical form)"
+        )
+    elif args.command == "freeze":
         if args.out.exists() and not args.force:
             raise SystemExit(f"{args.out} exists. A frozen test set must not change (--force).")
         manifest = freeze(
-            args.dataset, args.split, args.n, args.seed, args.name or args.out.stem, args.revision
+            args.dataset,
+            args.split,
+            args.n,
+            args.seed,
+            args.name or args.out.stem,
+            args.revision,
+            args.image_column,
+            args.text_column,
         )
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(manifest.to_json())

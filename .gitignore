@@ -26,3 +26,6 @@ wandb/
 
 #Personal
 PLAN.md
+
+# Node
+node_modules/

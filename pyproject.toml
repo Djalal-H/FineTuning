@@ -17,6 +17,16 @@ train = [
     "huggingface_hub>=0.30",
 ]
 
+# API baselines (Claude). Runs locally, no GPU.
+api = ["anthropic>=2.6"]
+# Local GPU baselines: pix2tex and GOT-OCR 2.0. pix2tex pins old packages (timm,
+# x-transformers), so this extra conflicts with "train" (see [tool.uv] conflicts).
+baselines = [
+    "pix2tex==0.1.4",
+    "transformers>=4.49",
+    "accelerate>=0.26",
+]
+
 [dependency-groups]
 dev = [
     "pytest>=8.0",
@@ -36,6 +46,7 @@ packages = ["src/mathscribe"]
 [tool.uv]
 # Training only runs on Linux (Colab, Modal, RunPod). This keeps the lockfile small.
 environments = ["sys_platform == 'linux'"]
+conflicts = [[{ extra = "train" }, { extra = "baselines" }]]
 
 [tool.ruff]
 line-length = 100

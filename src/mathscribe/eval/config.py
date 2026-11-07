@@ -12,7 +12,7 @@ import yaml
 from mathscribe.config import ConfigError, apply_overrides, build_section
 from mathscribe.data.formatting import CHAT_TEMPLATE_KWARGS, INSTRUCTION
 
-BACKENDS = ("unsloth", "jsonl")
+BACKENDS = ("unsloth", "anthropic", "pix2tex", "got_ocr", "jsonl")
 
 
 @dataclass
@@ -21,6 +21,9 @@ class EvalModelConfig:
 
     - ``backend: unsloth``: ``name`` is a base model, or a LoRA adapter (Hub repo or
       local folder). Unsloth reads the base model from the adapter config.
+    - ``backend: anthropic``: ``name`` is a Claude model ID.
+    - ``backend: pix2tex``: ``name`` is only a label (pix2tex has one checkpoint).
+    - ``backend: got_ocr``: ``name`` is a GOT-OCR 2.0 checkpoint on the Hub.
     - ``backend: jsonl``: ``name`` is a ``predictions.jsonl`` file of an earlier run.
       The run scores the stored raw outputs again, with no model and no GPU.
     """
@@ -29,11 +32,13 @@ class EvalModelConfig:
     name: str | None = "unsloth/Qwen3.5-4B"
     label: str | None = None  # name in the leaderboard (default: run_name)
     load_in_4bit: bool = False
+    options: dict[str, Any] = field(default_factory=dict)  # backend-specific, see predictors.py
 
 
 @dataclass
 class GenerationConfig:
     instruction: str = INSTRUCTION
+    system_prompt: str | None = None  # only the anthropic backend uses it
     max_new_tokens: int = 512
     batch_size: int = 8
     chat_template_kwargs: dict[str, Any] = field(default_factory=lambda: dict(CHAT_TEMPLATE_KWARGS))
@@ -43,6 +48,15 @@ class GenerationConfig:
 class TestsetConfig:
     manifest: str = "data/testsets/latex_ocr_test.json"
     subset: int | None = None  # the first N rows of the manifest; None = all rows
+
+
+@dataclass
+class RenderConfig:
+    """Compile rate and render match (see ``mathscribe.eval.render``). Needs node."""
+
+    enabled: bool = True
+    timeout_s: float = 10.0
+    cache_dir: str | None = "outputs/render_cache"
 
 
 @dataclass
@@ -60,6 +74,7 @@ class EvalRunConfig:
     model: EvalModelConfig = field(default_factory=EvalModelConfig)
     generation: GenerationConfig = field(default_factory=GenerationConfig)
     testset: TestsetConfig = field(default_factory=TestsetConfig)
+    render: RenderConfig = field(default_factory=RenderConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
 
     @property
@@ -74,6 +89,7 @@ _SECTIONS = {
     "model": EvalModelConfig,
     "generation": GenerationConfig,
     "testset": TestsetConfig,
+    "render": RenderConfig,
     "output": OutputConfig,
 }
 

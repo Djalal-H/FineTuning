@@ -77,24 +77,35 @@ def paired_diff(
 # --------------------------------------------------------------------------- #
 # Per-row scores of a run (stored in the result JSON)
 # --------------------------------------------------------------------------- #
-CI_METRICS = ("exact_match", "normalized_match", "cer")
+def _flags(values: Sequence[bool | None]) -> str:
+    """0/1 column as a string. "-" is a row with no value (its reference does not render)."""
+    return "".join("-" if v is None else ("1" if v else "0") for v in values)
 
 
-def per_row_scores(scores: Sequence[dict]) -> dict[str, str | list[int]]:
+def per_row_scores(scores: Sequence[dict]) -> dict[str, str | list]:
     """The per-row scores that the intervals need, in the test set order.
 
     0/1 columns are strings ("0110..."), so 1000 rows take about 1 KB each.
+    The render columns are there only when the run used the renderer.
     """
-    return {
-        "exact_match": "".join("1" if s["exact_match"] else "0" for s in scores),
-        "normalized_match": "".join("1" if s["normalized_match"] else "0" for s in scores),
+    out: dict[str, str | list] = {
+        "exact_match": _flags([s["exact_match"] for s in scores]),
+        "normalized_match": _flags([s["normalized_match"] for s in scores]),
         "char_edits": [int(s["char_edits"]) for s in scores],
         "ref_chars": [int(s["ref_chars"]) for s in scores],
     }
+    if scores and "compiles" in scores[0]:
+        out["compiles"] = _flags([s["compiles"] for s in scores])
+        out["render_match"] = _flags([s["render_match"] for s in scores])
+        out["render_similarity"] = [
+            None if s["render_similarity"] is None else round(s["render_similarity"], 4)
+            for s in scores
+        ]
+    return out
 
 
 def run_statistics(per_row: dict) -> tuple[int, dict[str, Statistic]]:
-    """(number of rows, a statistic for each metric in ``CI_METRICS``)."""
+    """(number of rows, a statistic for each metric that the per-row scores support)."""
     em = [c == "1" for c in per_row["exact_match"]]
     nm = [c == "1" for c in per_row["normalized_match"]]
     stats = {
@@ -102,10 +113,17 @@ def run_statistics(per_row: dict) -> tuple[int, dict[str, Statistic]]:
         "normalized_match": rate(nm),
         "cer": ratio(per_row["char_edits"], per_row["ref_chars"]),
     }
+    if "render_match" in per_row:
+        stats["compile_rate"] = rate([c == "1" for c in per_row["compiles"]])
+        # Rows whose reference does not render ("-") are not in the denominator.
+        stats["render_match"] = ratio(
+            [c == "1" for c in per_row["render_match"]],
+            [c != "-" for c in per_row["render_match"]],
+        )
     return len(nm), stats
 
 
 def run_ci(per_row: dict) -> dict[str, list[float]]:
-    """The 95% interval of each metric in ``CI_METRICS``."""
+    """The 95% interval of each metric that the per-row scores support."""
     n, stats = run_statistics(per_row)
-    return {name: [round(v, 4) for v in ci(stats[name], n)] for name in CI_METRICS}
+    return {name: [round(v, 4) for v in ci(stat, n)] for name, stat in stats.items()}

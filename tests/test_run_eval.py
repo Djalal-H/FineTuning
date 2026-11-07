@@ -30,13 +30,14 @@ class FakePredictor:
         return {"gpu": "FakeGPU"}
 
 
-def _cfg(tmp_path, manifest, **model):
+def _cfg(tmp_path, manifest, render=False, **model):
     return eval_config_from_dict(
         {
             "run_name": "fake",
             "model": {"label": "Fake model", **model},
             "generation": {"batch_size": 3},
             "testset": {"manifest": str(manifest)},
+            "render": {"enabled": render, "cache_dir": str(tmp_path / "render_cache")},
             "output": {
                 "dir": str(tmp_path / "out"),
                 "results_dir": str(tmp_path / "results"),
@@ -123,3 +124,37 @@ def test_cli_dry_run(capsys):
 def test_cli_reports_config_errors():
     with pytest.raises(SystemExit, match=r"model\.name"):
         run_eval.main(["--config", str(CONFIG_DIR / "sft_smoke.yaml"), "--dry-run"])
+
+
+def test_run_with_the_renderer_adds_compile_and_render_match(tmp_path, manifest, source_ds, texts):
+    from mathscribe.eval.render import Renderer, RendererUnavailable
+
+    try:
+        Renderer().close()
+    except RendererUnavailable as e:
+        pytest.skip(str(e))
+    result = run_eval.run(_cfg(tmp_path, manifest, render=True), FakePredictor(texts), source_ds)
+    m = result["metrics"]
+    indices = [i for i, _ in json.loads(manifest.read_text())["rows"]]
+    correct = sum(1 for i in indices if i % 2 == 0) / len(indices)
+    # The fake outputs are the references (in $$...$$) or "wrong", which renders but differs.
+    assert m["compile_rate"] == 1.0
+    assert m["ref_render_rate"] == 1.0
+    assert m["render_match"] == pytest.approx(correct)
+    assert "render_match" in result["ci95"]
+    assert result["renderer"].startswith("mathjax-")
+
+    lines = (tmp_path / "out" / "fake" / "toy_n4" / "predictions.jsonl").read_text().splitlines()
+    record = json.loads(lines[0])
+    assert {"compiles", "compile_error", "render_match", "render_similarity"} <= set(record)
+    assert any((tmp_path / "render_cache").rglob("*.png"))
+    board = (tmp_path / "leaderboard.md").read_text()
+    assert "Render match" in board
+
+
+def test_result_records_the_scorer_version(tmp_path, manifest, source_ds, texts):
+    from mathscribe.eval.metrics import SCORER_VERSION
+
+    result = run_eval.run(_cfg(tmp_path, manifest), FakePredictor(texts), source_ds)
+    assert result["scorer_version"] == SCORER_VERSION
+    assert isinstance(result["git_dirty"], bool | None)

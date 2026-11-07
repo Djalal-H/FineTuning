@@ -23,6 +23,10 @@ lora:
 data:
   dataset: unsloth/LaTeX_OCR
   split: train
+  revision: 4da395c8a0253f4f30983cf08f2480f9bafbd561   # same as data/testsets/*.json
+  # The smoke run reproduces the notebook, so it keeps all rows. A real SFT run sets
+  # exclude: [data/testsets/latex_ocr_val.json] to keep the val rows out of training.
+  exclude: []
   max_train_samples: null      # full split; the sampler then picks the same rows as the notebook
   instruction: Write the LaTeX representation for this image.
 

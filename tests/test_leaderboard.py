@@ -99,3 +99,77 @@ def test_delta_is_empty_without_per_row_scores_or_baseline():
     board = render_leaderboard([new], baseline_run="missing")
     new_row = next(line for line in board.splitlines() if line.startswith("| New |"))
     assert new_row.split("|")[4].strip() == "-"
+
+
+def test_render_columns():
+    plain = _with_rows(_result("Plain", 0, run_name="zs"), "1" * 50 + "0" * 50)
+    board = render_leaderboard([plain], baseline_run="zs")
+    row = next(line for line in board.splitlines() if line.startswith("| Plain |"))
+    cells = [c.strip() for c in row.split("|")]
+    header = [c.strip() for c in board.splitlines()[board.splitlines().index(row) - 2].split("|")]
+    assert cells[header.index("Compile")] == "-"
+    assert cells[header.index("Render match")] == "**-**"
+
+    def with_render(result, column, renderer="r1"):
+        result["per_row"]["compiles"] = "1" * len(column)
+        result["per_row"]["render_match"] = column
+        result["metrics"]["compile_rate"] = 1.0
+        valid = [c for c in column if c != "-"]
+        result["metrics"]["render_match"] = valid.count("1") / len(valid)
+        result["renderer"] = renderer
+        return result
+
+    base = with_render(
+        _with_rows(_result("Base", 0, run_name="zs"), "1" * 100), "1" * 40 + "0" * 59 + "-"
+    )
+    new = with_render(
+        _with_rows(_result("New", 0, run_name="sft"), "1" * 100), "1" * 70 + "0" * 29 + "-"
+    )
+    other = with_render(
+        _with_rows(_result("Other", 0, run_name="o"), "1" * 100), "1" * 99 + "-", "r2"
+    )
+    board = render_leaderboard([base, new, other], baseline_run="zs")
+    lines = board.splitlines()
+    header = [
+        c.strip()
+        for c in next(line for line in lines if line.startswith("| Model | Exact")).split("|")
+    ]
+    new_row = [
+        c.strip() for c in next(line for line in lines if line.startswith("| New |")).split("|")
+    ]
+    assert new_row[header.index("Compile")] == "100.0"
+    assert new_row[header.index("Render match")].startswith("**70.7")
+    assert new_row[header.index("Δ render")].startswith("+30.3 [")
+    assert new_row[header.index("Δ render")].endswith("*")
+    # A different renderer version: no paired render delta.
+    other_row = [
+        c.strip() for c in next(line for line in lines if line.startswith("| Other |")).split("|")
+    ]
+    assert other_row[header.index("Δ render")] == "-"
+
+
+def test_uncommitted_runs_are_marked():
+    clean = _result("Clean", 0.5)
+    dirty = _result("Dirty", 0.4)
+    dirty["git_dirty"] = True
+    board = render_leaderboard([clean, dirty])
+    assert "| `0123456` | 2026-11-03 |" in _row(board, "| Clean |")
+    assert "| `0123456`+ | 2026-11-03 |" in _row(board, "| Dirty |")
+
+
+def _row(board, prefix):
+    return next(line for line in board.splitlines() if line.startswith(prefix))
+
+
+def test_runs_with_different_scorer_versions_are_not_compared():
+    old = _with_rows(_result("Old", 0, run_name="zs"), "1" * 50 + "0" * 50)  # no version: 1
+    new = _with_rows(_result("New", 0, run_name="sft"), "1" * 60 + "0" * 40)
+    new["scorer_version"] = 2
+    board = render_leaderboard([old, new], baseline_run="zs")
+    assert _row(board, "| New |").split("|")[4].strip() == "-"
+    assert "Older scorer (version < 2), not compared with newer runs: Old." in board
+
+    old["scorer_version"] = 2
+    board = render_leaderboard([old, new], baseline_run="zs")
+    assert _row(board, "| New |").split("|")[4].strip().startswith("+10.0")
+    assert "Older scorer" not in board

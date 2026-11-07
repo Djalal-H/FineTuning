@@ -42,6 +42,9 @@ class LoraConfig:
 class DataConfig:
     dataset: str = "unsloth/LaTeX_OCR"
     split: str = "train"
+    revision: str | None = None  # dataset commit sha; None = the main branch
+    # Manifests (data/testsets/*.json) whose rows training must not see, e.g. the val set.
+    exclude: list[str] = field(default_factory=list)
     max_train_samples: int | None = None
     instruction: str = INSTRUCTION
 

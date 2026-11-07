@@ -96,3 +96,44 @@ def test_per_row_scores_round_trip_to_the_aggregate_metrics():
     intervals = run_ci(per_row)
     assert set(intervals) == {"exact_match", "normalized_match", "cer"}
     assert all(lo <= hi for lo, hi in intervals.values())
+
+
+def _render_score(text_ok, compiles, match):
+    s = score_sample("a" if text_ok else "b", "a")
+    s.update(
+        compiles=compiles,
+        render_match=match,
+        render_similarity=None if match is None else float(match),
+    )
+    return s
+
+
+def test_render_columns_skip_rows_whose_reference_does_not_render():
+    scores = [
+        _render_score(True, True, True),
+        _render_score(False, True, False),
+        _render_score(False, False, None),  # the reference does not render
+    ]
+    per_row = per_row_scores(scores)
+    assert per_row["compiles"] == "110"
+    assert per_row["render_match"] == "10-"
+    assert per_row["render_similarity"] == [1.0, 0.0, None]
+
+    n, stats = run_statistics(per_row)
+    everything = list(range(n))
+    agg = aggregate(scores)
+    assert stats["render_match"](everything) == pytest.approx(agg["render_match"]) == 0.5
+    assert stats["compile_rate"](everything) == pytest.approx(agg["compile_rate"])
+    assert set(run_ci(per_row)) == {
+        "exact_match",
+        "normalized_match",
+        "cer",
+        "compile_rate",
+        "render_match",
+    }
+
+
+def test_text_only_runs_have_no_render_columns():
+    per_row = per_row_scores([score_sample("a", "a")])
+    assert "render_match" not in per_row
+    assert "render_match" not in run_statistics(per_row)[1]

@@ -1,0 +1,17 @@
+# Specialist baseline: pix2tex (LaTeX-OCR, ~25M parameters). Runs locally on a small GPU.
+# Needs the baselines extra (uv sync --extra baselines).
+# Caution: pix2tex trained on im2latex-style data from arXiv and Wikipedia. Its training
+# data can contain formulas of this test set.
+run_name: pix2tex
+
+model:
+  backend: pix2tex
+  name: pix2tex-0.1.4
+  label: pix2tex 0.1.4
+
+generation:
+  batch_size: 16
+
+testset:
+  manifest: data/testsets/latex_ocr_test.json
+  subset: null

@@ -53,22 +53,31 @@ Facts to remember:
 - Without `USE_DRIVE = True`, a Colab disconnect deletes the local files. The Hub keeps the latest checkpoint.
 - The notebook uses text-then-image order in training, but image-then-text order in inference. Use the training order everywhere.
 
-### Phase 1: in progress (evaluation harness and baselines)
+### Phase 1: done (evaluation harness and baselines)
 
-Steps:
+What was done:
 
-1. Done. `data/testsets/latex_ocr_test.json` freezes 1000 rows of the `test` split (seed 2026, dataset revision `4da395c8`, sha256 `ca73bfe6…`).
-2. Done. `inference_messages()` and `convert_to_conversation()` both use `user_content()` (text, then image).
-3. Done. `eval/normalize.py` and `eval/metrics.py` (exact match, normalized match, CER, BLEU, difficulty buckets), with unit tests.
-4. Code done. `python -m mathscribe.eval.run_eval --subset N`. Open: run the zero-shot base model and the smoke adapter on Colab (`TASK = "eval"`).
-5. Next. Add the LaTeX renderer (`render.py`) to `scripts/setup_env.sh`. Then add compile rate and render match.
-6. Next. Add the other baselines (pix2tex, a larger Qwen-VL, an API model) and CROHME.
-7. Done. `run_eval` writes `reports/results/<run>__<testset>_n<N>.json` and builds `reports/leaderboard.md`.
+- Frozen manifests in `data/testsets/`: `latex_ocr_test.json` (1000 rows of `test`), `latex_ocr_val.json` (1000 rows of `train`), `crohme2014.json` (all 986 rows). `reports/data_splits.md` has the hashes and the overlap with the training rows (0.9%, 2.0%, 3.0%).
+- Train configs pin `data.revision`. `data.exclude` removes manifest rows (the val set) from training. `sft_smoke.yaml` keeps `exclude: []` (the notebook rows).
+- One prompt function: `inference_messages()` and `convert_to_conversation()` both use `user_content()` (text, then image).
+- `eval/normalize.py`, `eval/metrics.py` (exact, normalized, CER, BLEU, buckets), `eval/render.py` (compile rate, render match), `eval/bootstrap.py` (95% intervals, paired Δ vs baseline).
+- `renderer/` is a node render server (MathJax + resvg). `scripts/setup_env.sh` installs it (`npm ci`) in every mode.
+- `run_eval.py` backends: `unsloth`, `anthropic`, `pix2tex`, `got_ocr`, `jsonl` (replay). It writes `reports/results/<run>__<testset>_n<N>.json` and builds `reports/leaderboard.md`.
+- Extras: `api` (anthropic), `baselines` (pix2tex, GOT-OCR). `baselines` conflicts with `train` in `[tool.uv]`.
+
+Open items:
+
+- Run on Colab, both test sets: `qwen35_4b_zeroshot`, `sft_smoke`, `qwen35_9b_zeroshot`. The old n=1000 Qwen results have no render metrics.
+- Run `claude_opus55.yaml` locally. It needs an Anthropic credential.
 
 Facts to remember:
 
 - The Qwen3.5 chat template trains on `<think>\n\n</think>\n\n` + answer. Inference must use `enable_thinking: false`. Without it, the prompt ends with `<think>\n` and the model starts to think.
 - `--subset N` uses the first N manifest rows. The rows are in random order, so each prefix is a random sample. Each N has its own sha256 and its own leaderboard table.
-- The `jsonl` backend scores a stored `predictions.jsonl` again, with no GPU. Use it after a metric change.
-- The `UnslothPredictor` worked on Colab (T4, n=100). The zero-shot model got 50% normalized match, and the smoke adapter got 57%.
-- Each result JSON stores `ci95` and `per_row` scores. The leaderboard uses `per_row` for the paired "Δ vs baseline" interval (`output.baseline_run`). Result files without `per_row` show "-".
+- The `jsonl` backend scores a stored `predictions.jsonl` again, with no GPU. The Colab runner downloads this file. Use it after a metric change.
+- Render match snaps glyph positions to whole pixels and removes empty pixel columns, so spaces do not count. Change `RENDERER_VERSION` in `renderer/server.mjs` when the render output changes: the cache key and the paired Δ use it.
+- MathJax renders 99.5% of the `test` references. Rows whose reference does not render are not in the render match denominator (`ref_render_rate`).
+- pix2tex: `LatexOCR()` defaults to the CPU and to sampling (temperature 0.2), and it sets the root logger to FATAL. `Pix2TexPredictor` fixes all three.
+- GOT-OCR needs about 5.3 GB for a batch of 2. It wraps formulas in a one-cell `array` and adds text after `\]`. The normalizer and `extract_latex` handle both, for every model.
+- The shell `grep` is an alias for `ugrep` with recursive options. In pipelines, use `command grep`.
+- Each result stores `git_dirty`. The leaderboard shows `+` after the commit for runs with uncommitted changes.

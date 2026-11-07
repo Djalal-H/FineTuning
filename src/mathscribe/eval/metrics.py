@@ -9,6 +9,10 @@ Definitions (all rates are in [0, 1]):
 - ``bleu``: corpus BLEU-4 (Papineni et al., 2002) on the canonical tokens. Uniform
   weights, brevity penalty, no smoothing.
 - ``empty_rate``: the share of predictions that are empty after ``extract_latex``.
+- ``compile_rate``, ``render_match``, ``render_similarity`` (only with the renderer, see
+  ``render.py``): the share of predictions that render; the share of rows whose renders
+  match; the mean render similarity. Rows whose reference does not render are not in the
+  render match and render similarity denominators (``ref_render_rate`` shows how many are).
 
 The canonical form removes whitespace and spacing differences, so CER and BLEU measure
 the content and not the style of the output.
@@ -28,6 +32,11 @@ from mathscribe.eval.normalize import (
     parse,
     tokenize,
 )
+
+# Increase this when a change to normalize.py, metrics.py or extract_latex can change a
+# score. The leaderboard compares two runs (paired Δ) only with the same scorer version.
+# Score older runs again with the jsonl backend. Version 1: result files without the field.
+SCORER_VERSION = 2
 
 # Length buckets: the number of canonical reference tokens. The limits are the tertiles
 # of the unsloth/LaTeX_OCR test split (7,632 rows).
@@ -107,12 +116,12 @@ def score_sample(prediction: str, reference: str) -> dict[str, Any]:
     }
 
 
-def aggregate(scores: Sequence[dict[str, Any]]) -> dict[str, float | int]:
+def aggregate(scores: Sequence[dict[str, Any]]) -> dict[str, float | int | None]:
     """Corpus metrics over the per-sample scores of ``score_sample``."""
     n = len(scores)
     if n == 0:
         return {"n": 0}
-    return {
+    out: dict[str, float | int | None] = {
         "n": n,
         "exact_match": sum(s["exact_match"] for s in scores) / n,
         "normalized_match": sum(s["normalized_match"] for s in scores) / n,
@@ -120,11 +129,19 @@ def aggregate(scores: Sequence[dict[str, Any]]) -> dict[str, float | int]:
         "bleu": corpus_bleu([s["pred_tokens"] for s in scores], [s["ref_tokens"] for s in scores]),
         "empty_rate": sum(s["empty"] for s in scores) / n,
     }
+    if "compiles" in scores[0]:
+        rendered = [s for s in scores if s["render_match"] is not None]
+        k = len(rendered)
+        out["compile_rate"] = sum(s["compiles"] for s in scores) / n
+        out["render_match"] = sum(s["render_match"] for s in rendered) / k if k else None
+        out["render_similarity"] = sum(s["render_similarity"] for s in rendered) / k if k else None
+        out["ref_render_rate"] = k / n
+    return out
 
 
 def aggregate_by_tag(
     scores: Sequence[dict[str, Any]], tags: Sequence[Sequence[str]]
-) -> dict[str, dict[str, float | int]]:
+) -> dict[str, dict[str, float | int | None]]:
     """``aggregate`` for each difficulty tag. A sample can be in more than one tag."""
     groups: dict[str, list[dict[str, Any]]] = {}
     for score, sample_tags in zip(scores, tags, strict=True):

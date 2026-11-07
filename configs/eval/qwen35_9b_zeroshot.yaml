@@ -1,0 +1,19 @@
+# Larger Qwen-VL baseline: Qwen3.5-9B, zero-shot, 4-bit (fits a 15 GB T4).
+run_name: qwen35_9b_zeroshot
+
+model:
+  backend: unsloth
+  name: unsloth/Qwen3.5-9B
+  label: Qwen3.5-9B (zero-shot, 4-bit)
+  load_in_4bit: true
+
+generation:
+  instruction: Write the LaTeX representation for this image.
+  max_new_tokens: 512
+  batch_size: 8
+  chat_template_kwargs:
+    enable_thinking: false
+
+testset:
+  manifest: data/testsets/latex_ocr_test.json
+  subset: null

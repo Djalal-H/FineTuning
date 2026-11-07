@@ -11,23 +11,50 @@ How to read the intervals (bootstrap, 2000 resamples, see
 [`src/mathscribe/eval/bootstrap.py`](../src/mathscribe/eval/bootstrap.py)):
 
 - `[low, high]` after a value is its 95% confidence interval.
-- *Δ vs baseline* is the normalized match of the run minus the normalized match of the
-  baseline run, on the same rows (paired). A `*` shows that the interval does not include 0,
-  so the difference is significant at the 5% level.
-- `-` shows that the result file has no per-row scores (runs before the intervals were added).
+- *Δ norm.* and *Δ render* are the normalized match and the render match of the run minus
+  those of the baseline run, on the same rows (paired). A `*` shows that the interval does
+  not include 0, so the difference is significant at the 5% level.
+- *Compile* and *Render match* come from the MathJax renderer
+  ([`src/mathscribe/eval/render.py`](../src/mathscribe/eval/render.py)). Render match
+  counts only the rows whose reference renders.
+- A `+` after the commit shows that the run used uncommitted changes on top of that commit.
+- `-` shows that the result file has no value for this column (for example, a run before
+  the renderer or the intervals were added).
 
-## latex_ocr_test, n=100
+## crohme2014, n=986
 
-`unsloth/LaTeX_OCR` split `test` at revision `4da395c8a025`. Rows sha256 `36b9842e882ed166`. Baseline: `qwen35_4b_zeroshot`.
+`Neeze/CROHME-full` split `2014` at revision `6d03ee8f86df`. Rows sha256 `a8d04ecfa9a793f1`. Baseline: `qwen35_4b_zeroshot`.
 
-| Model | Exact | Norm. match | Δ vs baseline | CER | BLEU | Empty | GPU | img/s | Commit | Date |
-|---|---|---|---|---|---|---|---|---|---|---|
-| Qwen3.5-4B + LoRA (sft_smoke, 15 steps) | 41.0 | **57.0** | - | 6.5 | 89.9 | 0.0 | Tesla T4 | 0.32 | `acac284` | 2026-11-03 |
-| Qwen3.5-4B (zero-shot) | 37.0 | **50.0** | baseline | 6.5 | 89.4 | 0.0 | Tesla T4 | 0.68 | `acac284` | 2026-11-03 |
+| Model | Exact | Norm. match | Δ norm. | CER | BLEU | Compile | Render match | Δ render | Empty | GPU | img/s | Commit | Date |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| GOT-OCR 2.0 (format mode) | 17.6 | **17.8 [15.5, 20.2]** | - | 92.3 [72.5, 115.6] | 33.3 | 86.5 | **18.4 [16.0, 20.7]** | - | 0.0 | NVIDIA GeForce RTX 3060 Laptop GPU | 1.11 | `dce1af4`+ | 2026-11-07 |
+| pix2tex 0.1.4 | 0.1 | **0.1 [0.0, 0.3]** | - | 351.0 [327.0, 376.8] | 1.9 | 65.2 | **0.3 [0.0, 0.7]** | - | 0.0 | NVIDIA GeForce RTX 3060 Laptop GPU | 1.82 | `dce1af4`+ | 2026-11-07 |
 
 Normalized match for each difficulty bucket (the number of rows is in brackets):
 
 | Model | len:short | len:medium | len:long | matrix | nested_frac |
 |---|---|---|---|---|---|
-| Qwen3.5-4B + LoRA (sft_smoke, 15 steps) | 71.7 (46) | 61.9 (21) | 33.3 (33) | 0.0 (6) | 0.0 (4) |
-| Qwen3.5-4B (zero-shot) | 63.0 (46) | 52.4 (21) | 30.3 (33) | 0.0 (6) | 0.0 (4) |
+| GOT-OCR 2.0 (format mode) | 18.6 (935) | 4.4 (45) | 0.0 (6) | - | 0.0 (6) |
+| pix2tex 0.1.4 | 0.1 (935) | 0.0 (45) | 0.0 (6) | - | 0.0 (6) |
+
+## latex_ocr_test, n=1000
+
+`unsloth/LaTeX_OCR` split `test` at revision `4da395c8a025`. Rows sha256 `ca73bfe6fc809f65`. Baseline: `qwen35_4b_zeroshot`.
+
+| Model | Exact | Norm. match | Δ norm. | CER | BLEU | Compile | Render match | Δ render | Empty | GPU | img/s | Commit | Date |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Qwen3.5-4B + LoRA (sft_smoke, 15 steps) | 42.5 | **54.2 [51.1, 57.2]** | +8.1 [+5.6, +10.7] * | 7.4 [5.4, 10.4] | 90.0 | - | **-** | - | 0.0 | Tesla T4 | 0.41 | `dce1af4` | 2026-11-06 |
+| Qwen3.5-4B (zero-shot) | 35.1 | **46.1 [43.1, 49.2]** | baseline | 8.6 [6.2, 12.7] | 88.0 | - | **-** | baseline | 0.0 | Tesla T4 | 0.70 | `dce1af4` | 2026-11-06 |
+| pix2tex 0.1.4 | 32.3 | **40.3 [37.2, 43.3]** | - | 10.0 [8.8, 11.5] | 87.1 | 98.6 | **52.8 [49.5, 55.8]** | - | 0.1 | NVIDIA GeForce RTX 3060 Laptop GPU | 2.02 | `dce1af4`+ | 2026-11-07 |
+| GOT-OCR 2.0 (format mode) | 8.1 | **26.6 [24.1, 29.4]** | - | 26.3 [21.1, 32.5] | 71.7 | 96.9 | **39.3 [36.2, 42.4]** | - | 0.0 | NVIDIA GeForce RTX 3060 Laptop GPU | 0.74 | `dce1af4`+ | 2026-11-07 |
+
+Older scorer (version < 2), not compared with newer runs: Qwen3.5-4B + LoRA (sft_smoke, 15 steps), Qwen3.5-4B (zero-shot). Score them again with the `jsonl` backend, or run them again.
+
+Normalized match for each difficulty bucket (the number of rows is in brackets):
+
+| Model | len:short | len:medium | len:long | matrix | nested_frac |
+|---|---|---|---|---|---|
+| Qwen3.5-4B + LoRA (sft_smoke, 15 steps) | 70.4 (358) | 56.9 (320) | 33.5 (322) | 0.0 (47) | 13.3 (15) |
+| Qwen3.5-4B (zero-shot) | 60.3 (358) | 49.1 (320) | 27.3 (322) | 0.0 (47) | 20.0 (15) |
+| pix2tex 0.1.4 | 50.1 (359) | 42.1 (323) | 27.4 (318) | 21.3 (47) | 0.0 (15) |
+| GOT-OCR 2.0 (format mode) | 39.0 (359) | 23.2 (323) | 16.0 (318) | 19.1 (47) | 6.7 (15) |

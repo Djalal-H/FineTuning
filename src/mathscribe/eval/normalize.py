@@ -13,6 +13,11 @@ It is the output of these rules, in this order:
    - drop ``\\hspace``, ``\\vspace`` and ``\\label`` with their argument,
    - unwrap redundant braces: a group with exactly one item (``{ x }`` -> ``x``,
      ``{ { a b } }`` -> ``{ a b }``). Empty groups (``{ }``) stay,
+   - in an environment (``\\begin ... \\end``): a cell that is exactly one brace group
+     loses the braces (``& { a b } &`` -> ``& a b &``, ``& { } &`` -> ``& &``), and a
+     ``\\\\`` immediately before ``\\end`` goes. The column spec of ``array`` stays apart,
+   - an ``array``, ``matrix``, ``aligned``, ``gathered`` or ``split`` with exactly one cell
+     (no ``&`` and no ``\\\\``) becomes its content: ``\\begin{array}{l} x \\end{array}`` -> ``x``,
    - put a subscript before a superscript (``x ^ b _ a`` -> ``x _ a ^ b``).
    If the braces are not balanced, step 5 does not run. Then a broken output
    cannot become equal to a reference only because of brace rules.
@@ -167,6 +172,8 @@ def _tree_rules(items: list[str | Group]) -> list[str | Group]:
         else:
             out.append(item)
 
+    out = _unwrap_single_cell_envs(_cell_rules(out))
+
     # "^ B _ A" -> "_ A ^ B".
     i = 0
     while i + 3 < len(out):
@@ -175,6 +182,116 @@ def _tree_rules(items: list[str | Group]) -> list[str | Group]:
             i += 4
         else:
             i += 1
+    return out
+
+
+ENV_WITH_COLSPEC = frozenset(["array", "tabular", "subarray"])
+ROW_BREAK = "\\\\"
+
+
+def _env_name(item: str | Group | None) -> str | None:
+    if isinstance(item, Group) and all(isinstance(t, str) for t in item):
+        return "".join(item)  # type: ignore[arg-type]
+    return item if isinstance(item, str) else None
+
+
+def _cell_rules(items: list[str | Group]) -> list[str | Group]:
+    """Cell braces and the last row break in environments (see the module docstring)."""
+    out: list[str | Group] = []
+    cells: list[list[str | Group]] = []  # the open cell of each open environment
+
+    def emit(item: str | Group) -> None:
+        (cells[-1] if cells else out).append(item)
+
+    def close_cell() -> None:
+        cell = cells.pop()
+        if len(cell) == 1 and isinstance(cell[0], Group):
+            cell = list(cell[0])
+        (cells[-1] if cells else out).extend(cell)
+
+    i = 0
+    while i < len(items):
+        item = items[i]
+        if item == "\\begin":
+            emit(item)
+            name = items[i + 1] if i + 1 < len(items) else None
+            i += 1
+            if name is not None:
+                emit(name)
+                i += 1
+                if _env_name(name) in ENV_WITH_COLSPEC and i < len(items):
+                    emit(items[i])  # the column spec
+                    i += 1
+            cells.append([])
+            continue
+        if cells and item == ROW_BREAK and i + 1 < len(items) and items[i + 1] == "\\end":
+            i += 1  # a row break before \end adds no row
+            continue
+        if cells and item in ("&", ROW_BREAK):
+            close_cell()
+            emit(item)
+            cells.append([])
+        elif cells and item == "\\end":
+            close_cell()
+            emit(item)
+        else:
+            emit(item)
+        i += 1
+    while cells:  # an environment with no \end
+        close_cell()
+    return out
+
+
+SINGLE_CELL_ENVS = frozenset(["array", "subarray", "matrix", "aligned", "gathered", "split"])
+
+
+def _matching_end(items: list[str | Group], begin: int) -> int | None:
+    """The index of the ``\\end`` that closes the ``\\begin`` at ``begin``."""
+    depth = 0
+    for j in range(begin, len(items)):
+        if items[j] == "\\begin":
+            depth += 1
+        elif items[j] == "\\end":
+            depth -= 1
+            if depth == 0:
+                return j
+    return None
+
+
+def _has_top_level_separator(body: list[str | Group]) -> bool:
+    depth = 0
+    for item in body:
+        if item == "\\begin":
+            depth += 1
+        elif item == "\\end":
+            depth -= 1
+        elif depth == 0 and item in ("&", ROW_BREAK):
+            return True
+    return False
+
+
+def _unwrap_single_cell_envs(items: list[str | Group]) -> list[str | Group]:
+    """A one-cell environment is its content (see the module docstring)."""
+    out: list[str | Group] = []
+    i = 0
+    while i < len(items):
+        if items[i] == "\\begin" and i + 1 < len(items):
+            name = _env_name(items[i + 1])
+            end = _matching_end(items, i)
+            if (
+                name in SINGLE_CELL_ENVS
+                and end is not None
+                and end + 1 < len(items)
+                and _env_name(items[end + 1]) == name
+            ):
+                start = i + 2 + (1 if name in ENV_WITH_COLSPEC else 0)
+                body = items[start:end]
+                if not _has_top_level_separator(body):
+                    out.extend(_unwrap_single_cell_envs(body))
+                    i = end + 2
+                    continue
+        out.append(items[i])
+        i += 1
     return out
 
 
@@ -219,12 +336,14 @@ def frac_depth(items: list[str | Group]) -> int:
 # Model output -> LaTeX
 # --------------------------------------------------------------------------- #
 _FENCE_RE = re.compile(r"```[a-zA-Z]*[ \t]*\n?(.*?)```", re.DOTALL)
+# A math wrapper at the start of the output, up to its FIRST closing delimiter. Math
+# cannot contain its own closing delimiter, so text after it is not part of the formula.
 _WRAPPERS = [
-    (re.compile(r"^\$\$(.*)\$\$$", re.DOTALL), 1),
-    (re.compile(r"^\$(.*)\$$", re.DOTALL), 1),
-    (re.compile(r"^\\\[(.*)\\\]$", re.DOTALL), 1),
-    (re.compile(r"^\\\((.*)\\\)$", re.DOTALL), 1),
-    (re.compile(r"^\\begin\{(equation\*?|displaymath)\}(.*)\\end\{\1\}$", re.DOTALL), 2),
+    (re.compile(r"^\$\$(.*?)\$\$", re.DOTALL), 1),
+    (re.compile(r"^\$(.*?)\$", re.DOTALL), 1),
+    (re.compile(r"^\\\[(.*?)\\\]", re.DOTALL), 1),
+    (re.compile(r"^\\\((.*?)\\\)", re.DOTALL), 1),
+    (re.compile(r"^\\begin\{(equation\*?|displaymath)\}(.*?)\\end\{\1\}", re.DOTALL), 2),
 ]
 
 
@@ -233,7 +352,8 @@ def extract_latex(raw: str) -> str:
 
     - Text up to the last ``</think>`` goes. An open ``<think>`` with no end gives "".
     - The content of the first Markdown code fence, if there is one.
-    - One outer math wrapper: ``$$..$$``, ``$..$``, ``\\[..\\]``, ``\\(..\\)``, ``equation``.
+    - One math wrapper at the start: ``$$..$$``, ``$..$``, ``\\[..\\]``, ``\\(..\\)``,
+      ``equation``, up to its first closing delimiter. Text after it goes.
     """
     text = raw
     if "</think>" in text:

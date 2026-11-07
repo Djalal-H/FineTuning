@@ -29,10 +29,15 @@ How to read the intervals (bootstrap, 2000 resamples, see
 [`src/mathscribe/eval/bootstrap.py`](../src/mathscribe/eval/bootstrap.py)):
 
 - `[low, high]` after a value is its 95% confidence interval.
-- *Δ vs baseline* is the normalized match of the run minus the normalized match of the
-  baseline run, on the same rows (paired). A `*` shows that the interval does not include 0,
-  so the difference is significant at the 5% level.
-- `-` shows that the result file has no per-row scores (runs before the intervals were added).
+- *Δ norm.* and *Δ render* are the normalized match and the render match of the run minus
+  those of the baseline run, on the same rows (paired). A `*` shows that the interval does
+  not include 0, so the difference is significant at the 5% level.
+- *Compile* and *Render match* come from the MathJax renderer
+  ([`src/mathscribe/eval/render.py`](../src/mathscribe/eval/render.py)). Render match
+  counts only the rows whose reference renders.
+- A `+` after the commit shows that the run used uncommitted changes on top of that commit.
+- `-` shows that the result file has no value for this column (for example, a run before
+  the renderer or the intervals were added).
 """
 
 
@@ -45,14 +50,14 @@ def _pct(value: float | None) -> str:
 
 
 def _with_ci(result: dict[str, Any], metric: str) -> str:
-    value = _pct(result["metrics"][metric])
+    value = _pct(result["metrics"].get(metric))
     interval = result.get("ci95", {}).get(metric)
     if not interval:
         return value
     return f"{value} [{_pct(interval[0])}, {_pct(interval[1])}]"
 
 
-def _delta_vs_baseline(result: dict[str, Any], baseline: dict[str, Any] | None) -> str:
+def _delta_vs_baseline(result: dict[str, Any], baseline: dict[str, Any] | None, metric: str) -> str:
     if baseline is None:
         return "-"
     if result is baseline:
@@ -61,11 +66,19 @@ def _delta_vs_baseline(result: dict[str, Any], baseline: dict[str, Any] | None) 
         return "-"
     n_a, stats_a = run_statistics(result["per_row"])
     n_b, stats_b = run_statistics(baseline["per_row"])
-    if n_a != n_b:
+    if n_a != n_b or metric not in stats_a or metric not in stats_b:
         return "-"
-    delta, lo, hi = paired_diff(stats_a["normalized_match"], stats_b["normalized_match"], n_a)
+    if _scorer(result) != _scorer(baseline):
+        return "-"  # different normalizer or metrics: the rows are not comparable
+    if metric == "render_match" and result.get("renderer") != baseline.get("renderer"):
+        return "-"  # different renderer versions: the rows are not comparable
+    delta, lo, hi = paired_diff(stats_a[metric], stats_b[metric], n_a)
     mark = " *" if lo > 0 or hi < 0 else ""
     return f"{100 * delta:+.1f} [{100 * lo:+.1f}, {100 * hi:+.1f}]{mark}"
+
+
+def _scorer(result: dict[str, Any]) -> int:
+    return int(result.get("scorer_version", 1))
 
 
 def _section(results: list[dict[str, Any]], baseline_run: str | None) -> list[str]:
@@ -77,9 +90,9 @@ def _section(results: list[dict[str, Any]], baseline_run: str | None) -> list[st
         f"`{ts['dataset']}` split `{ts['split']}` at revision `{ts['revision'][:12]}`. "
         f"Rows sha256 `{ts['sha256'][:16]}`. Baseline: `{baseline_run or '-'}`.",
         "",
-        "| Model | Exact | Norm. match | Δ vs baseline | CER | BLEU | Empty "
-        "| GPU | img/s | Commit | Date |",
-        "|---|---|---|---|---|---|---|---|---|---|---|",
+        "| Model | Exact | Norm. match | Δ norm. | CER | BLEU | Compile | Render match "
+        "| Δ render | Empty | GPU | img/s | Commit | Date |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     ranked = sorted(results, key=lambda r: (-r["metrics"]["normalized_match"], r["label"]))
     for r in ranked:
@@ -87,11 +100,23 @@ def _section(results: list[dict[str, Any]], baseline_run: str | None) -> list[st
         ips = rt.get("images_per_s")
         lines.append(
             f"| {r['label']} | {_pct(m['exact_match'])} | **{_with_ci(r, 'normalized_match')}** "
-            f"| {_delta_vs_baseline(r, baseline)} | {_with_ci(r, 'cer')} "
-            f"| {_pct(m['bleu'])} | {_pct(m['empty_rate'])} "
+            f"| {_delta_vs_baseline(r, baseline, 'normalized_match')} | {_with_ci(r, 'cer')} "
+            f"| {_pct(m['bleu'])} | {_pct(m.get('compile_rate'))} "
+            f"| **{_with_ci(r, 'render_match')}** "
+            f"| {_delta_vs_baseline(r, baseline, 'render_match')} | {_pct(m['empty_rate'])} "
             f"| {rt.get('gpu', '-')} | {'-' if ips is None else f'{ips:.2f}'} "
-            f"| `{(r.get('git_commit') or '-')[:7]}` | {r.get('date', '-')} |"
+            f"| `{(r.get('git_commit') or '-')[:7]}`{'+' if r.get('git_dirty') else ''} "
+            f"| {r.get('date', '-')} |"
         )
+    newest = max(_scorer(r) for r in results)
+    old = [r["label"] for r in ranked if _scorer(r) < newest]
+    if old:
+        lines += [
+            "",
+            f"Older scorer (version < {newest}), not compared with newer runs: "
+            + ", ".join(old)
+            + ". Score them again with the `jsonl` backend, or run them again.",
+        ]
     lines += [
         "",
         "Normalized match for each difficulty bucket (the number of rows is in brackets):",

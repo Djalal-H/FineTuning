@@ -1,0 +1,26 @@
+# API baseline: Claude Opus 5.5, zero-shot. Runs locally (no GPU).
+# Needs the api extra (uv sync --extra api) and an Anthropic credential
+# (ANTHROPIC_API_KEY, or a profile from `ant auth login`).
+run_name: claude_opus55
+
+model:
+  backend: anthropic
+  name: claude-opus-5-5
+  label: Claude Opus 5.5 (API, zero-shot)
+  options:
+    effort: low          # Opus 5.5 always thinks and has no temperature
+    fallbacks: true      # server-side refusal fallbacks; counted in runtime.fallback_rows
+    max_tokens: 4096
+
+generation:
+  instruction: Write the LaTeX representation for this image.
+  # The other models get no system prompt. An API model adds prose and $ delimiters
+  # without it; extract_latex removes delimiters and code fences, but not prose.
+  system_prompt: >-
+    Reply with only the LaTeX code of the formula in the image. Do not add $ or \[ \]
+    delimiters, a code block, or an explanation.
+  batch_size: 8          # parallel requests
+
+testset:
+  manifest: data/testsets/latex_ocr_test.json
+  subset: null

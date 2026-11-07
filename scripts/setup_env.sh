@@ -3,8 +3,12 @@
 #
 #   bash scripts/setup_env.sh            # local: uv venv + dev tools + pre-commit hooks
 #   bash scripts/setup_env.sh --train    # local: also the GPU training stack
+#   bash scripts/setup_env.sh --api      # local: also the Claude API baseline (anthropic)
+#   bash scripts/setup_env.sh --baselines  # local: also pix2tex and GOT-OCR (torch)
 #   bash scripts/setup_env.sh --colab    # Colab: train stack into the system Python
 #
+# Every mode also installs the LaTeX renderer (node packages in renderer/).
+# --train and --baselines cannot go together (pix2tex pins old packages).
 # With --colab, set PYTHON to choose the interpreter (default: python3 on PATH).
 # The runner notebook sets it to the kernel's own interpreter (sys.executable).
 set -euo pipefail
@@ -13,11 +17,14 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 MODE=local
 WITH_TRAIN=0
+EXTRAS=()
 for arg in "$@"; do
   case "$arg" in
     --colab) MODE=colab; WITH_TRAIN=1 ;;
     --train) WITH_TRAIN=1 ;;
-    -h|--help) sed -n '2,9p' "$0"; exit 0 ;;
+    --api) EXTRAS+=(--extra api) ;;
+    --baselines) EXTRAS+=(--extra baselines) ;;
+    -h|--help) sed -n '2,15p' "$0"; exit 0 ;;
     *) echo "Unknown option: $arg" >&2; exit 2 ;;
   esac
 done
@@ -31,10 +38,25 @@ ensure_uv() {
   uv --version
 }
 
+node_major() {
+  node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0
+}
+
 setup_renderer() {
-  # The LaTeX renderer (KaTeX via node, or pdflatex) is needed by the eval and
-  # the GRPO reward. It comes in Phase 1 (see PLAN.md).
-  echo ">> LaTeX renderer: not installed yet (Phase 1)"
+  # The LaTeX renderer (renderer/: MathJax + resvg in node) gives the eval its compile
+  # rate and render match. The GRPO reward (Phase 3) uses it too.
+  if ! command -v node >/dev/null 2>&1 || [[ "$(node_major)" -lt 18 ]]; then
+    if [[ "$MODE" == colab ]]; then
+      echo ">> Installing Node.js 20 (the renderer needs node >= 18)"
+      curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+      apt-get install -y nodejs
+    else
+      echo "!! The LaTeX renderer needs Node.js >= 18. Install it, then run this script again." >&2
+      exit 1
+    fi
+  fi
+  echo ">> LaTeX renderer: npm ci in renderer/ (node $(node --version))"
+  (cd renderer && npm ci --no-audit --no-fund --loglevel=error)
 }
 
 ensure_uv
@@ -58,7 +80,7 @@ if missing:
 print(f"mathscribe {mathscribe.__version__} from {mathscribe.__file__} ({sys.executable})")
 EOF
 else
-  extras=()
+  extras=("${EXTRAS[@]}")
   [[ "$WITH_TRAIN" == 1 ]] && extras+=(--extra train)
   echo ">> uv sync ${extras[*]:-}"
   uv sync "${extras[@]}"
