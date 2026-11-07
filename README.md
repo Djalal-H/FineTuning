@@ -140,9 +140,14 @@ python -m mathscribe.eval.run_eval --config configs/eval/qwen35_4b_zeroshot.yaml
 | `pix2tex.yaml` | pix2tex 0.1.4 | local GPU | `bash scripts/setup_env.sh --baselines` |
 | `got_ocr2.yaml` | GOT-OCR 2.0 (format mode) | local GPU | `bash scripts/setup_env.sh --baselines` |
 
-On Colab, set `TASK = "eval"` in [`notebooks/colab_runner.ipynb`](notebooks/colab_runner.ipynb).
-The last cell downloads the result JSON. Put it in `reports/results/`, then run
-`python -m mathscribe.eval.leaderboard` and commit both files.
+On Colab, set `TASK = "eval"` in [`notebooks/colab_runner.ipynb`](notebooks/colab_runner.ipynb),
+and list the models in `EVAL_RUNS` and the test sets in `EVAL_TESTSETS`. The notebook runs each
+model on each test set, and the last cell downloads `eval_results.zip`. In your local clone:
+
+```bash
+unzip -o eval_results.zip      # reports/results/*.json and outputs/eval/*/predictions.jsonl
+uv run python -m mathscribe.eval.leaderboard
+```
 
 Every Qwen model gets the training prompt (text, then image) and greedy decoding.
 `enable_thinking: false` makes the prompt end with `<think>\n\n</think>\n\n`, as in

@@ -74,7 +74,8 @@ Facts to remember:
 
 - The Qwen3.5 chat template trains on `<think>\n\n</think>\n\n` + answer. Inference must use `enable_thinking: false`. Without it, the prompt ends with `<think>\n` and the model starts to think.
 - `--subset N` uses the first N manifest rows. The rows are in random order, so each prefix is a random sample. Each N has its own sha256 and its own leaderboard table.
-- The `jsonl` backend scores a stored `predictions.jsonl` again, with no GPU. The Colab runner downloads this file. Use it after a metric change.
+- The `jsonl` backend scores a stored `predictions.jsonl` again, with no GPU. Use it after a metric change.
+- The Colab runner (`TASK = "eval"`) runs every model in `EVAL_RUNS` on every test set in `EVAL_TESTSETS`, each in its own process. It skips runs whose result exists (`SKIP_DONE`), and downloads `eval_results.zip` with repo paths (`unzip -o` in the repo root).
 - Render match snaps glyph positions to whole pixels and removes empty pixel columns, so spaces do not count. Change `RENDERER_VERSION` in `renderer/server.mjs` when the render output changes: the cache key and the paired Δ use it.
 - MathJax renders 99.5% of the `test` references. Rows whose reference does not render are not in the render match denominator (`ref_render_rate`).
 - pix2tex: `LatexOCR()` defaults to the CPU and to sampling (temperature 0.2), and it sets the root logger to FATAL. `Pix2TexPredictor` fixes all three.
