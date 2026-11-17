@@ -212,6 +212,8 @@ def run(cfg: SFTRunConfig, resume_from: Path | None = None) -> dict[str, Any]:
         use_rslora=cfg.lora.use_rslora,
         loftq_config=None,
         random_state=cfg.lora.random_state,
+        # Unsloth passes extra arguments on to peft.LoraConfig. Set it only when it is on.
+        **({"use_dora": True} if cfg.lora.use_dora else {}),
     )
 
     train_dataset = load_latex_ocr(cfg.data)

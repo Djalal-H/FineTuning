@@ -35,6 +35,7 @@ class LoraConfig:
     lora_dropout: float = 0.0
     bias: str = "none"
     use_rslora: bool = False
+    use_dora: bool = False
     random_state: int = 2003
 
 

@@ -1,0 +1,40 @@
+# The Phase 2 ablations: one-factor-at-a-time from configs/train/ablation_base.yaml.
+#
+# Each entry is one training run:
+#   name:       the run name (W&B run, output folder, Hub repo suffix)
+#   overrides:  --set values that change ONE setting from the base config
+#   factor:     what the run tests (used in reports/ablations.md)
+#
+# Notes on the choices:
+#   - r=8 and r=64 keep lora_alpha = r, so the scale alpha/r stays at 1 (the base value).
+#     The run changes the capacity of the adapter, not the scale.
+#   - rsLoRA scales by alpha/sqrt(r), so with r=16 and alpha=16 the scale is 4, not 1.
+#     This is part of the method. The run shows the effect of the method with the base alpha.
+#   - QLoRA 4-bit loads the base model in 4 bits. The base run uses 16-bit (float32 on a T4,
+#     because the T4 has no bf16 and float16 does not work for qwen3_5).
+#   - DoRA needs a check on a GPU. If the run fails, remove it and record the reason.
+base_config: configs/train/ablation_base.yaml
+hub_prefix: djaloul/mathscribe-abl      # the repo of a run is <hub_prefix>-<name>
+
+runs:
+  - name: base
+    factor: "LoRA r=16 (base)"
+    overrides: []
+  - name: dora
+    factor: "DoRA"
+    overrides: [lora.use_dora=true]
+  - name: rslora
+    factor: "rsLoRA"
+    overrides: [lora.use_rslora=true]
+  - name: r8
+    factor: "r=8"
+    overrides: [lora.r=8, lora.lora_alpha=8]
+  - name: r64
+    factor: "r=64"
+    overrides: [lora.r=64, lora.lora_alpha=64]
+  - name: no_vision
+    factor: "vision layers off"
+    overrides: [lora.finetune_vision_layers=false]
+  - name: qlora4
+    factor: "QLoRA 4-bit"
+    overrides: [model.load_in_4bit=true]

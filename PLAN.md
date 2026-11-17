@@ -100,7 +100,8 @@ Items:
 - [X] $ cost from public GPU prices (`configs/gpu_prices.yaml`, `mathscribe.cost`).
 - [X] HF Hub as the model registry with auto-generated model cards (`mathscribe.train.model_card`).
 - [X] Validation during training: `eval_loss` on 200 val rows, early stopping, best-checkpoint selection (`configs/train/sft_base.yaml`).
-- [ ] Short check run on Colab (about 20 steps) for validation, early stopping, W&B, the model card and `--resume`, before the long runs.
+- [X] Short check run (20 steps, on Kaggle: `notebooks/kaggle_runner.ipynb`) for validation, best-checkpoint selection, W&B, the model card and `--resume` from the Hub. About 14 s per step on a T4 (validation included), peak 9.3 GB of 14.6 GB. Early stopping has unit tests only: the check run did not trigger it.
+- [X] Ablation configs: `configs/train/ablation_base.yaml` (4,000 rows, 500 steps, no early stopping) and `configs/ablations.yaml` (7 runs, one setting each). `lora.use_dora` is a config key now. Unsloth passes `use_dora` to PEFT, but a GPU run must still confirm that DoRA trains.
 - [ ] One-factor-at-a-time ablations on a fixed subset (about 4,000 rows, 500 steps, about 2.4 h each on a T4), compared on the **val** set only: base LoRA r=16; DoRA; rsLoRA; r ∈ {8, 64}; vision layers off; QLoRA 4-bit vs 16-bit (float32 on a T4). First check that Unsloth's `get_peft_model` accepts DoRA. Log quality, peak VRAM, GPU type, GPU hours and the derived $ cost.
 - [ ] Full SFT run (`sft_base.yaml`: 12,000 rows, 1 epoch, 1,500 steps, about 7 h on a T4, 2–3 sessions with `--resume` and `USE_DRIVE = True`). Use the best ablation settings. Then evaluate on val and on both test sets.
 - [ ] `reports/ablations.md`, generated from the committed result JSONs and `run_info.json` files, with a W&B link for each row (no W&B key needed to build it).

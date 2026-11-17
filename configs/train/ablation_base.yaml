@@ -1,0 +1,83 @@
+# Base config of the Phase 2 ablations. Every ablation changes ONE setting from this file.
+# The list of ablations and their overrides is in configs/ablations.yaml.
+#
+# Same as sft_base.yaml, except for the size of the run:
+#   4,000 rows x 1 epoch / batch 8 = 500 steps, about 2 h on a T4 (about 14 s per step
+#   in the Phase 2 check run, with validation).
+#
+# All ablations use the same rows, the same seeds, and the same schedule, so the only
+# difference between two runs is the one setting. Compare the runs on the val set only
+# (data/testsets/latex_ocr_val.json). Never use the test sets to choose a setting.
+#
+# Early stopping is off. Every run trains for all 500 steps, so the GPU hours are
+# comparable. The best checkpoint (lowest eval_loss) is still the final adapter.
+run_name: abl_base
+
+model:
+  name: unsloth/Qwen3.5-4B
+  load_in_4bit: false
+  use_gradient_checkpointing: unsloth
+
+lora:
+  finetune_vision_layers: true
+  finetune_language_layers: true
+  finetune_attention_modules: true
+  finetune_mlp_modules: true
+  r: 16
+  lora_alpha: 16
+  lora_dropout: 0.0
+  bias: none
+  use_rslora: false
+  use_dora: false
+  random_state: 2003
+
+data:
+  dataset: unsloth/LaTeX_OCR
+  split: train
+  revision: 4da395c8a0253f4f30983cf08f2480f9bafbd561   # same as data/testsets/*.json
+  exclude: [data/testsets/latex_ocr_val.json]          # training never sees the val rows
+  max_train_samples: 4000
+  instruction: Write the LaTeX representation for this image.
+
+validation:
+  manifest: data/testsets/latex_ocr_val.json
+  samples: 200
+  early_stopping_patience: null
+  early_stopping_threshold: 0.0
+
+hub:
+  push: false
+  repo_id: null
+  private: true
+
+tracking:
+  enabled: true
+  project: mathscribe
+  tags: [phase2, ablation]
+
+# Keyword arguments for trl.SFTConfig.
+train:
+  output_dir: outputs/abl_base
+  num_train_epochs: 1
+  max_steps: -1
+  per_device_train_batch_size: 2
+  gradient_accumulation_steps: 4
+  warmup_steps: 50
+  learning_rate: 2.0e-4
+  lr_scheduler_type: linear
+  optim: adamw_8bit
+  weight_decay: 0.001
+  seed: 3407
+  max_length: 2048
+  logging_steps: 10
+  eval_strategy: steps
+  eval_steps: 100
+  per_device_eval_batch_size: 2
+  prediction_loss_only: true
+  save_strategy: steps
+  save_steps: 100
+  save_total_limit: 2
+  load_best_model_at_end: true
+  metric_for_best_model: eval_loss
+  greater_is_better: false
+  restore_callback_states_from_checkpoint: true

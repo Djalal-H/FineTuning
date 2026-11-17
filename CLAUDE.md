@@ -41,9 +41,9 @@ What was achieved:
 
 - The smoke run trained on Colab from the CLI and pushed the adapter to the HF Hub.
 
-Open check:
+Check done (2026-11-17, on Kaggle during the Phase 2 check run):
 
-- Stop a run after step 5, then run it again with `--resume`. Make sure that it continues from the Hub checkpoint.
+- A run of 10 steps, then a new session with `--resume` to step 20, continued from the Hub checkpoint. The W&B run and the cost carried over.
 
 Facts to remember:
 
