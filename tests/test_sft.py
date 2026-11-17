@@ -1,6 +1,7 @@
 """Tests for the GPU-free parts of mathscribe.train.sft."""
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -25,8 +26,12 @@ def _make_ckpt(root: Path, name: str, global_step: int | None = None) -> Path:
 
 
 def test_importing_sft_does_not_load_gpu_stack():
-    assert "unsloth" not in sys.modules
-    assert "torch" not in sys.modules
+    # A new process: other tests may import transformers (and torch) in this one.
+    code = (
+        "import sys, mathscribe.train.sft; "
+        "assert not {'torch', 'unsloth', 'wandb'} & set(sys.modules), 'GPU stack loaded'"
+    )
+    subprocess.run([sys.executable, "-c", code], check=True)
 
 
 def test_build_sft_args_without_hub(tmp_path):
@@ -37,6 +42,34 @@ def test_build_sft_args_without_hub(tmp_path):
     assert args["max_steps"] == 15
     assert args["run_name"] == "sft_smoke"
     assert "push_to_hub" not in args
+    assert args["report_to"] == "none"
+
+
+def test_build_sft_args_report_to_follows_tracking(tmp_path):
+    args = sft.build_sft_args(_cfg(tmp_path, "tracking.enabled=true"))
+    assert args["report_to"] == ["wandb"]
+
+
+def test_best_checkpoint_info(tmp_path):
+    assert sft.best_checkpoint_info(None, None, None, True) is None
+    ckpt = _make_ckpt(tmp_path, "checkpoint-300", global_step=300)
+    info = sft.best_checkpoint_info(str(ckpt), 0.03, "eval_loss", True)
+    assert info == {
+        "path": str(ckpt),
+        "step": 300,
+        "metric": "eval_loss",
+        "value": 0.03,
+        "found": True,
+        "loaded": True,
+    }
+    # A disconnect deleted the folder: the trainer keeps the last adapter.
+    gone = sft.best_checkpoint_info(str(tmp_path / "checkpoint-200"), 0.02, "loss", True)
+    assert (gone["step"], gone["metric"], gone["found"], gone["loaded"]) == (
+        200,
+        "eval_loss",
+        False,
+        False,
+    )
 
 
 def test_build_sft_args_with_hub(tmp_path):

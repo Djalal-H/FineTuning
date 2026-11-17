@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from mathscribe.config import ConfigError
+from mathscribe.cost import run_cost
 from mathscribe.eval.bootstrap import per_row_scores, run_ci
 from mathscribe.eval.config import EvalRunConfig, load_eval_config
 from mathscribe.eval.leaderboard import write_leaderboard
@@ -136,6 +137,10 @@ def run(
     cfg: EvalRunConfig, predictor: Predictor | None = None, source: Dataset | None = None
 ) -> dict[str, Any]:
     """Evaluate and write all outputs. ``predictor`` and ``source`` are for tests."""
+    if cfg.tracking.enabled:
+        from mathscribe.tracking import ensure_login
+
+        ensure_login()  # stop now, not after a long eval run
     manifest = Manifest.load(cfg.testset.manifest)
     rows = load_testset(manifest, cfg.testset.subset, source=source)
     indices, hashes = manifest.prefix(cfg.testset.subset)
@@ -161,6 +166,7 @@ def run(
     # A replayed run (backend jsonl) keeps the timing of the original run.
     runtime = {"wall_clock_s": summary["wall_clock_s"], "images_per_s": summary["images_per_s"]}
     runtime.update(predictor.runtime_info())
+    runtime["cost"] = run_cost(runtime.get("gpu"), runtime.get("wall_clock_s"))
     result = {
         "run_name": cfg.run_name,
         "label": cfg.label,
@@ -187,15 +193,30 @@ def run(
             ["mathscribe", "unsloth", "transformers", "torch", "datasets"]
         ),
         "config": cfg.to_dict(),
+        "wandb": None,
         # Per-row scores in the test set order, for the paired intervals of the leaderboard.
         "per_row": summary["per_row"],
     }
 
     run_dir, result_file = run_paths(cfg, manifest.name, len(indices))
     run_dir.mkdir(parents=True, exist_ok=True)
-    with (run_dir / "predictions.jsonl").open("w") as f:
+    predictions = run_dir / "predictions.jsonl"
+    with predictions.open("w") as f:
         for record in records:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    if cfg.tracking.enabled:
+        from mathscribe import tracking
+
+        wandb_run = tracking.init_run(
+            cfg.tracking,
+            name=f"{cfg.run_name}__{manifest.name}_n{len(indices)}",
+            job_type="eval",
+            config=cfg.to_dict(),
+            group=cfg.run_name,
+        )
+        result["wandb"] = tracking.run_ref(wandb_run)
+        tracking.log_eval_result(wandb_run, result, predictions)
+        wandb_run.finish()
     text = json.dumps(result, indent=2, default=str) + "\n"
     (run_dir / "metrics.json").write_text(text)
     result_file.parent.mkdir(parents=True, exist_ok=True)
@@ -224,7 +245,7 @@ def run(
         100 * m["bleu"],
         m["n"],
     )
-    log.info("Predictions: %s", run_dir / "predictions.jsonl")
+    log.info("Predictions: %s", predictions)
     log.info("Result: %s. Leaderboard: %s", result_file, board)
     return result
 

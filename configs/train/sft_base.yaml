@@ -1,0 +1,87 @@
+# Phase 2 full SFT run, sized for free Colab (T4).
+#
+# Budget (measured in reports/phase0_reference.md: about 17 s per step on a T4, batch 8):
+#   12,000 rows x 1 epoch / batch 8 = 1,500 steps, about 7 h of training,
+#   plus 15 validation passes of 200 rows. Plan for 2-3 Colab sessions with --resume.
+#
+# CAUTION: use USE_DRIVE = True in the Colab runner. load_best_model_at_end needs the best
+# checkpoint folder at the end of the run. Without Drive, a disconnect deletes it, and the
+# final adapter is the last one (run_info.json then has best_checkpoint.loaded = false).
+#
+# Hub push (for --resume after a disconnect) is set by the runner:
+#   --set hub.push=true --set hub.repo_id=<user>/mathscribe-sft-base
+run_name: sft_base
+
+model:
+  name: unsloth/Qwen3.5-4B
+  load_in_4bit: false
+  use_gradient_checkpointing: unsloth
+
+lora:
+  finetune_vision_layers: true
+  finetune_language_layers: true
+  finetune_attention_modules: true
+  finetune_mlp_modules: true
+  r: 16
+  lora_alpha: 16
+  lora_dropout: 0.0
+  bias: none
+  use_rslora: false
+  random_state: 2003
+
+data:
+  dataset: unsloth/LaTeX_OCR
+  split: train
+  revision: 4da395c8a0253f4f30983cf08f2480f9bafbd561   # same as data/testsets/*.json
+  exclude: [data/testsets/latex_ocr_val.json]          # training never sees the val rows
+  # The first 12,000 of the 67,686 remaining rows. The split has no length order
+  # (mean length 147-150 characters in each tenth), so the first rows are a fair sample.
+  max_train_samples: 12000
+  instruction: Write the LaTeX representation for this image.
+
+# eval_loss on the first 200 val rows every eval_steps. Early stopping and the best
+# checkpoint use it. The full generation eval (run_eval.py) runs after training.
+validation:
+  manifest: data/testsets/latex_ocr_val.json
+  samples: 200
+  early_stopping_patience: 3
+  early_stopping_threshold: 0.0
+
+hub:
+  push: false
+  repo_id: null
+  private: true
+
+tracking:
+  enabled: true
+  project: mathscribe
+  tags: [phase2, sft]
+
+# Keyword arguments for trl.SFTConfig.
+train:
+  output_dir: outputs/sft_base
+  num_train_epochs: 1
+  max_steps: -1
+  per_device_train_batch_size: 2
+  gradient_accumulation_steps: 4
+  warmup_steps: 50
+  learning_rate: 2.0e-4
+  lr_scheduler_type: linear
+  optim: adamw_8bit
+  weight_decay: 0.001
+  seed: 3407
+  max_length: 2048
+  logging_steps: 10
+  # Validation and checkpoints on the same steps (load_best_model_at_end needs this).
+  # A disconnect loses at most 100 steps (about 30 min on a T4).
+  eval_strategy: steps
+  eval_steps: 100
+  per_device_eval_batch_size: 2
+  prediction_loss_only: true      # keep no logits (248k vocab x tokens x rows)
+  save_strategy: steps
+  save_steps: 100
+  save_total_limit: 2             # the trainer also keeps the best checkpoint
+  load_best_model_at_end: true
+  metric_for_best_model: eval_loss
+  greater_is_better: false
+  restore_callback_states_from_checkpoint: true   # early stopping counter survives --resume

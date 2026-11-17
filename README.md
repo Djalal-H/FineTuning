@@ -23,14 +23,19 @@ comes from a script in this repo, and lives in [`reports/`](reports/):
 ## Repo layout
 
 ```
-configs/train/        YAML run configs (sft_smoke.yaml = the notebook run)
+configs/train/        YAML run configs (sft_smoke.yaml = the notebook run, sft_base.yaml = Phase 2)
+configs/gpu_prices.yaml  public GPU prices for the $ cost of each run
 configs/eval/         YAML eval configs (Qwen3.5 4B/9B, smoke adapter, Claude, pix2tex, GOT-OCR)
 data/testsets/        frozen manifests: printed test, val, CROHME 2014 (row indices + hashes)
 renderer/             LaTeX -> PNG render server (node: MathJax + resvg)
 src/mathscribe/
   config.py           config loading + --set overrides
+  cost.py             GPU hours and $ cost from configs/gpu_prices.yaml
+  tracking.py         W&B runs for training and evaluation
   data/               dataset loading, chat formatting (training and inference prompt)
-  train/sft.py        SFT entry point (Unsloth + TRL), Hub checkpoints, --resume
+  train/sft.py        SFT entry point (Unsloth + TRL), Hub checkpoints, --resume, validation
+  train/run_state.py  W&B run ID + train time in each checkpoint (survives --resume)
+  train/model_card.py Hub model card from run_info.json + eval results
   eval/
     testsets.py       freeze / verify / overlap of seeded test subsets
     normalize.py      LaTeX tokens, canonical form, output extraction
@@ -82,6 +87,25 @@ use `uv run python -m mathscribe.train.sft ...` instead.
 
 Override any config value with `--set section.key=value` (for example
 `--set train.max_steps=30`).
+
+### Validation, tracking and model cards
+
+- `validation.manifest` gives `eval_loss` on the first `validation.samples` val rows every
+  `train.eval_steps`. Early stopping and the best checkpoint use it. The manifest must
+  also be in `data.exclude`; the config loader checks this.
+- `tracking.enabled=true` logs the run to W&B (project `tracking.project`). It needs
+  `WANDB_API_KEY` (Colab: the `WANDB_API_KEY` secret). Each `run_eval` run is a W&B run
+  in the group of its `run_name`, and its result JSON stores the W&B link.
+- Each checkpoint stores the W&B run ID and the train time. After `--resume`, the same
+  W&B run continues, and `run_info.json` has the train time of all sessions
+  (`total_train_s`) and its `$` cost (`cost`, from public prices).
+- At the end of training, the script writes the model card (`README.md`) and pushes it.
+  After the eval runs, build it again with the eval results:
+  `python -m mathscribe.train.model_card --repo-id <hf-user>/<repo> --push`.
+
+CAUTION: on Colab, use `USE_DRIVE = True` for configs with `load_best_model_at_end`
+(`sft_base.yaml`). A disconnect deletes the local disk, and then the final adapter is the
+last checkpoint, not the best one (`run_info.json`: `best_checkpoint.loaded = false`).
 
 ## Evaluation
 

@@ -35,6 +35,11 @@ hub:
   repo_id: null
   private: true
 
+# W&B logging. Turn it on from the command line: --set tracking.enabled=true
+tracking:
+  enabled: false
+  project: mathscribe
+
 # Keyword arguments for trl.SFTConfig. The vision-only arguments
 # (remove_unused_columns, dataset_text_field, dataset_kwargs) are set in code.
 train:
@@ -50,7 +55,6 @@ train:
   lr_scheduler_type: linear
   seed: 3407
   max_length: 2048
-  report_to: none
   # Checkpoints (and Hub pushes when hub.push is true) every 5 steps.
   save_strategy: steps
   save_steps: 5

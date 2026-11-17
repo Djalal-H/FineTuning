@@ -15,7 +15,11 @@ train = [
     "unsloth>=2026.4.5",
     "datasets>=3.0",
     "huggingface_hub>=0.30",
+    "wandb>=0.19",
 ]
+
+# Experiment tracking (W&B) for local runs, e.g. the local baselines. "train" includes it.
+tracking = ["wandb>=0.19"]
 
 # API baselines (Claude). Runs locally, no GPU.
 api = ["anthropic>=2.6"]

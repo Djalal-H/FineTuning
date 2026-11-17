@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import pytest
@@ -90,3 +91,41 @@ def test_hub_push_requires_repo_id():
 def test_output_dir_is_required():
     with pytest.raises(ConfigError, match="output_dir"):
         config_from_dict({"run_name": "r", "train": {}})
+
+
+BASE = CONFIG_DIR / "sft_base.yaml"
+
+
+def test_report_to_is_rejected():
+    with pytest.raises(ConfigError, match=r"tracking\.enabled"):
+        load_config(SMOKE, ["train.report_to=wandb"])
+
+
+def test_base_config_keeps_val_rows_out_of_training():
+    cfg = load_config(BASE)
+    assert cfg.validation.manifest in cfg.data.exclude
+    assert cfg.train["save_steps"] % cfg.train["eval_steps"] == 0
+    assert cfg.train["load_best_model_at_end"] is True
+    assert cfg.tracking.enabled is True
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        (["data.exclude=[]"], "must also be in 'data.exclude'"),
+        (["train.eval_strategy=no"], "needs 'train.eval_strategy'"),
+        (["validation.manifest=null"], "needs 'validation.manifest'"),
+        (["train.load_best_model_at_end=false"], "load_best_model_at_end"),
+        (["validation.samples=0"], "validation.samples"),
+        (["validation.early_stopping_patience=0"], "early_stopping_patience"),
+    ],
+)
+def test_validation_settings_are_checked(overrides, message):
+    with pytest.raises(ConfigError, match=re.escape(message)):
+        load_config(BASE, overrides)
+
+
+def test_smoke_config_has_no_validation():
+    cfg = load_config(SMOKE)
+    assert cfg.validation.manifest is None
+    assert cfg.tracking.enabled is False

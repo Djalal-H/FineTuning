@@ -1,6 +1,7 @@
 """End-to-end run_eval with a fake predictor and a local dataset (no GPU, no Hub)."""
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -48,8 +49,12 @@ def _cfg(tmp_path, manifest, render=False, **model):
 
 
 def test_importing_run_eval_does_not_load_gpu_stack():
-    assert "torch" not in sys.modules
-    assert "unsloth" not in sys.modules
+    # A new process: other tests may import transformers (and torch) in this one.
+    code = (
+        "import sys, mathscribe.eval.run_eval; "
+        "assert not {'torch', 'unsloth', 'wandb'} & set(sys.modules), 'GPU stack loaded'"
+    )
+    subprocess.run([sys.executable, "-c", code], check=True)
 
 
 def test_run_writes_predictions_result_and_leaderboard(tmp_path, manifest, source_ds, texts):
@@ -63,6 +68,9 @@ def test_run_writes_predictions_result_and_leaderboard(tmp_path, manifest, sourc
     assert result["metrics"]["n"] == 4
     assert result["metrics"]["normalized_match"] == pytest.approx(expected)
     assert result["runtime"]["gpu"] == "FakeGPU"
+    assert result["runtime"]["cost"]["usd"] is None  # no public price for FakeGPU
+    assert result["runtime"]["cost"]["gpu_hours"] is not None
+    assert result["wandb"] is None
     assert result["testset"]["n"] == 4
 
     run_dir = tmp_path / "out" / "fake" / "toy_n4"
@@ -158,3 +166,45 @@ def test_result_records_the_scorer_version(tmp_path, manifest, source_ds, texts)
     result = run_eval.run(_cfg(tmp_path, manifest), FakePredictor(texts), source_ds)
     assert result["scorer_version"] == SCORER_VERSION
     assert isinstance(result["git_dirty"], bool | None)
+
+
+class FakeWandbRun:
+    id, url, project, entity = "r1", "https://wandb.ai/me/mathscribe/runs/r1", "mathscribe", "me"
+
+    def __init__(self):
+        self.summary = {}
+        self.saved = []
+        self.finished = False
+
+    def save(self, path, base_path=None, policy=None):
+        self.saved.append(Path(path).name)
+
+    def finish(self):
+        self.finished = True
+
+
+def test_run_logs_to_wandb_when_tracking_is_on(tmp_path, manifest, source_ds, texts, monkeypatch):
+    from mathscribe import tracking
+
+    fake = FakeWandbRun()
+    calls = {}
+    monkeypatch.setattr(tracking, "ensure_login", lambda: calls.setdefault("login", True))
+
+    def fake_init(cfg, **kwargs):
+        calls["init"] = kwargs
+        return fake
+
+    monkeypatch.setattr(tracking, "init_run", fake_init)
+    cfg = _cfg(tmp_path, manifest)
+    cfg.tracking.enabled = True
+    result = run_eval.run(cfg, predictor=FakePredictor(texts), source=source_ds)
+
+    assert calls["login"] is True
+    assert calls["init"]["name"] == "fake__toy_n4"
+    assert (calls["init"]["job_type"], calls["init"]["group"]) == ("eval", "fake")
+    assert fake.summary["eval/n"] == 4
+    assert fake.saved == ["predictions.jsonl"]
+    assert fake.finished
+    assert result["wandb"]["url"] == FakeWandbRun.url
+    saved = json.loads((tmp_path / "results" / "fake__toy_n4.json").read_text())
+    assert saved["wandb"]["id"] == "r1"

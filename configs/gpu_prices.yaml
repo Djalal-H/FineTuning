@@ -1,0 +1,21 @@
+# Public on-demand prices for one GPU, used to give each run a $ cost (mathscribe.cost).
+# The runs use free Colab, so this is not money spent. It is the price of the same GPU
+# time on a public cloud, so that runs on different GPUs are comparable.
+#
+# Retrieved 2026-11-07. Check the sources again before you use a number in a budget.
+# The first entry whose `match` regex is found in the GPU name (torch device name) is used.
+# A GPU with no entry (for example a laptop GPU) gets no cost.
+retrieved: 2026-11-07
+gpus:
+  - match: '\bT4\b'
+    name: NVIDIA T4 16GB
+    usd_per_hour: 0.35
+    source: https://cloud.google.com/compute/gpus-pricing (Google Cloud, on-demand, GPU only)
+  - match: '\bL4\b'
+    name: NVIDIA L4 24GB
+    usd_per_hour: 0.71
+    source: https://computeprices.com/providers/google (Google Cloud on-demand, third-party tracker)
+  - match: 'A100.*40GB'
+    name: NVIDIA A100 40GB
+    usd_per_hour: 2.95
+    source: https://www.hivenet.com/post/gpu-google-guide-to-google-cloud-gpus-and-alternatives (Google Cloud on-demand, approximate)

@@ -9,7 +9,7 @@ from typing import Any
 
 import yaml
 
-from mathscribe.config import ConfigError, apply_overrides, build_section
+from mathscribe.config import ConfigError, TrackingConfig, apply_overrides, build_section
 from mathscribe.data.formatting import CHAT_TEMPLATE_KWARGS, INSTRUCTION
 
 BACKENDS = ("unsloth", "anthropic", "pix2tex", "got_ocr", "jsonl")
@@ -76,6 +76,8 @@ class EvalRunConfig:
     testset: TestsetConfig = field(default_factory=TestsetConfig)
     render: RenderConfig = field(default_factory=RenderConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
+    # W&B: one run per (model, test set), in the group of the model's run_name.
+    tracking: TrackingConfig = field(default_factory=TrackingConfig)
 
     @property
     def label(self) -> str:
@@ -91,6 +93,7 @@ _SECTIONS = {
     "testset": TestsetConfig,
     "render": RenderConfig,
     "output": OutputConfig,
+    "tracking": TrackingConfig,
 }
 
 

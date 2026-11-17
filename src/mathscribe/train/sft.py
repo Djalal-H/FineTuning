@@ -2,6 +2,7 @@
 
 Usage:
     python -m mathscribe.train.sft --config configs/train/sft_smoke.yaml
+    python -m mathscribe.train.sft --config configs/train/sft_base.yaml --set tracking.enabled=true
     python -m mathscribe.train.sft --config ... --set hub.repo_id=user/repo --resume
     python -m mathscribe.train.sft --config ... --dry-run   # no GPU needed
 
@@ -22,7 +23,8 @@ from pathlib import Path
 from typing import Any
 
 from mathscribe.config import SFTRunConfig, load_config
-from mathscribe.runinfo import git_commit, package_versions
+from mathscribe.cost import run_cost
+from mathscribe.runinfo import git_commit, git_dirty, git_remote, package_versions
 
 log = logging.getLogger("mathscribe.sft")
 
@@ -46,6 +48,8 @@ VISION_REQUIRED_ARGS: dict[str, Any] = {
 def build_sft_args(cfg: SFTRunConfig) -> dict[str, Any]:
     """Keyword arguments for ``trl.SFTConfig``."""
     args: dict[str, Any] = {"run_name": cfg.run_name, **cfg.train, **VISION_REQUIRED_ARGS}
+    # The tracking section is the only switch for W&B (config_from_dict rejects report_to).
+    args["report_to"] = ["wandb"] if cfg.tracking.enabled else "none"
     if cfg.hub.push:
         args.update(
             push_to_hub=True,
@@ -54,6 +58,33 @@ def build_sft_args(cfg: SFTRunConfig) -> dict[str, Any]:
             hub_private_repo=cfg.hub.private,
         )
     return args
+
+
+def best_checkpoint_info(
+    best_model_checkpoint: str | None,
+    best_metric: float | None,
+    metric_for_best_model: str | None,
+    load_best_model_at_end: bool,
+) -> dict[str, Any] | None:
+    """What ``run_info.json`` records about the best checkpoint (from the trainer state).
+
+    ``loaded`` is false when the trainer could not load the best checkpoint at the end:
+    the folder was on a disk that a Colab disconnect deleted. Then the final adapter is
+    the last one, not the best one.
+    """
+    if not best_model_checkpoint:
+        return None
+    path = Path(best_model_checkpoint)
+    metric = metric_for_best_model or "loss"
+    found = path.is_dir()
+    return {
+        "path": str(path),
+        "step": checkpoint_step(path),
+        "metric": metric if metric.startswith("eval_") else f"eval_{metric}",
+        "value": best_metric,
+        "found": found,
+        "loaded": bool(load_best_model_at_end and found),
+    }
 
 
 def checkpoint_step(path: Path) -> int:
@@ -132,17 +163,36 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 # --------------------------------------------------------------------------- #
 # Training
 # --------------------------------------------------------------------------- #
+def load_validation(cfg: SFTRunConfig) -> Any:
+    """The validation rows (``validation.manifest``, first ``samples`` rows), or None."""
+    if cfg.validation.manifest is None:
+        return None
+    from mathscribe.data import as_conversations
+    from mathscribe.eval.testsets import Manifest, load_testset
+
+    manifest = Manifest.load(cfg.validation.manifest)
+    if (manifest.dataset, manifest.split) != (cfg.data.dataset, cfg.data.split):
+        raise SystemExit(
+            f"validation.manifest is for {manifest.dataset}/{manifest.split}, "
+            f"not the training data {cfg.data.dataset}/{cfg.data.split}"
+        )
+    rows = load_testset(manifest, cfg.validation.samples)
+    return as_conversations(rows, cfg.data.instruction)
+
+
 def run(cfg: SFTRunConfig, resume_from: Path | None = None) -> dict[str, Any]:
     # Unsloth must be imported before transformers / trl / peft.
     import unsloth  # noqa: F401
 
     # isort: split
     import torch
+    from transformers import EarlyStoppingCallback
     from trl import SFTConfig, SFTTrainer
     from unsloth import FastVisionModel
     from unsloth.trainer import UnslothVisionDataCollator
 
     from mathscribe.data import load_latex_ocr
+    from mathscribe.train.run_state import make_run_state_callback, read_run_state
 
     model, tokenizer = FastVisionModel.from_pretrained(
         cfg.model.name,
@@ -166,6 +216,35 @@ def run(cfg: SFTRunConfig, resume_from: Path | None = None) -> dict[str, Any]:
 
     train_dataset = load_latex_ocr(cfg.data)
     log.info("Train dataset: %s/%s, %d rows", cfg.data.dataset, cfg.data.split, len(train_dataset))
+    eval_dataset = load_validation(cfg)
+    if eval_dataset is not None:
+        log.info("Validation: %s, %d rows", cfg.validation.manifest, len(eval_dataset))
+
+    callbacks: list[Any] = []
+    if cfg.validation.early_stopping_patience is not None:
+        callbacks.append(
+            EarlyStoppingCallback(
+                early_stopping_patience=cfg.validation.early_stopping_patience,
+                early_stopping_threshold=cfg.validation.early_stopping_threshold,
+            )
+        )
+    # A resumed run continues the W&B run and the train time stored in the checkpoint.
+    prior = read_run_state(resume_from)
+    wandb_run = None
+    if cfg.tracking.enabled:
+        from mathscribe import tracking
+
+        wandb_run = tracking.init_run(
+            cfg.tracking,
+            name=cfg.run_name,
+            job_type="train",
+            config=cfg.to_dict(),
+            group=cfg.run_name,
+            run_id=prior["wandb_run_id"],
+        )
+    callbacks.append(
+        make_run_state_callback(wandb_run.id if wandb_run else None, prior["train_seconds"])
+    )
 
     FastVisionModel.for_training(model)
     trainer = SFTTrainer(
@@ -173,6 +252,8 @@ def run(cfg: SFTRunConfig, resume_from: Path | None = None) -> dict[str, Any]:
         tokenizer=tokenizer,
         data_collator=UnslothVisionDataCollator(model, tokenizer),
         train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
+        callbacks=callbacks,
         args=SFTConfig(**build_sft_args(cfg)),
     )
 
@@ -184,18 +265,41 @@ def run(cfg: SFTRunConfig, resume_from: Path | None = None) -> dict[str, Any]:
     stats = trainer.train(resume_from_checkpoint=str(resume_from) if resume_from else None)
     wall_clock_s = time.time() - t0
 
+    best = best_checkpoint_info(
+        trainer.state.best_model_checkpoint,
+        trainer.state.best_metric,
+        trainer.args.metric_for_best_model,
+        trainer.args.load_best_model_at_end,
+    )
+    if best is not None and trainer.args.load_best_model_at_end and not best["loaded"]:
+        log.warning(
+            "The best checkpoint %s does not exist on this disk, so the final adapter is the "
+            "LAST one, not the best one. Use USE_DRIVE = True on Colab for runs with "
+            "load_best_model_at_end.",
+            best["path"],
+        )
+
     trainer.save_model(str(cfg.output_dir))
     tokenizer.save_pretrained(str(cfg.output_dir))
 
     info: dict[str, Any] = {
         "run_name": cfg.run_name,
         "git_commit": git_commit(),
+        "git_dirty": git_dirty(),
+        "git_remote": git_remote(),
         "resumed_from": str(resume_from) if resume_from else None,
+        "train_rows": len(train_dataset),
+        "eval_rows": len(eval_dataset) if eval_dataset is not None else 0,
+        "best_checkpoint": best,
+        "wandb": None,
         "gpu": gpu_props.name,
         "gpu_total_memory_gb": round(gpu_props.total_memory / 1024**3, 3),
         "peak_reserved_memory_gb": round(torch.cuda.max_memory_reserved() / 1024**3, 3),
         "reserved_memory_before_train_gb": round(start_reserved_gb, 3),
-        "wall_clock_s": round(wall_clock_s, 1),
+        "wall_clock_s": round(wall_clock_s, 1),  # this session only
+        # All sessions: the earlier ones up to the resume checkpoint, plus this one.
+        "total_train_s": round(prior["train_seconds"] + wall_clock_s, 1),
+        "cost": run_cost(gpu_props.name, prior["train_seconds"] + wall_clock_s),
         "global_step": trainer.state.global_step,
         "train_metrics": stats.metrics,
         "trainable_params": sum(p.numel() for p in model.parameters() if p.requires_grad),
@@ -206,12 +310,37 @@ def run(cfg: SFTRunConfig, resume_from: Path | None = None) -> dict[str, Any]:
         ),
         "config": cfg.to_dict(),
     }
-    (cfg.output_dir / "run_info.json").write_text(json.dumps(info, indent=2, default=str))
-    log.info("Run info: %s", cfg.output_dir / "run_info.json")
+    if wandb_run is not None:
+        from mathscribe import tracking
 
+        info["wandb"] = tracking.run_ref(wandb_run)
+    run_info_path = cfg.output_dir / "run_info.json"
+    run_info_path.write_text(json.dumps(info, indent=2, default=str))
+    log.info("Run info: %s", run_info_path)
+
+    from mathscribe.train.model_card import push_model_card, write_model_card
+
+    card = cfg.output_dir / "README.md"
     if cfg.hub.push:
         trainer.push_to_hub(commit_message=f"{cfg.run_name}: final (step {info['global_step']})")
         log.info("Pushed final adapter to https://huggingface.co/%s", cfg.hub.repo_id)
+        # push_to_hub writes the Trainer's own README.md. Replace it with the MathScribe card.
+        write_model_card(info, card, repo_id=cfg.hub.repo_id)
+        push_model_card(card, cfg.hub.repo_id, f"{cfg.run_name}: model card")
+    else:
+        write_model_card(info, card)
+
+    if wandb_run is not None:
+        from mathscribe import tracking
+
+        wandb_run.summary.update(
+            tracking.flatten(
+                "run_info",
+                {k: v for k, v in info.items() if k not in ("config", "versions", "train_metrics")},
+            )
+        )
+        wandb_run.save(str(run_info_path), base_path=str(cfg.output_dir), policy="now")
+        wandb_run.finish()
     return info
 
 

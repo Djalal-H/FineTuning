@@ -88,10 +88,22 @@ mathscribe/
 
 ## Phase 2: Proper SFT, ablations and tracking (≈1 week)
 
-- [ ] W&B or MLflow logging, DVC for datasets, HF Hub as the model registry with auto-generated model cards.
-- [ ] Full SFT run: epochs, evaluation on val, early stopping, best-checkpoint selection.
-- [ ] One-factor-at-a-time ablations (about 6 runs, not a 36-run full grid) from one base config: LoRA vs DoRA vs rsLoRA; r ∈ {8, 16, 64}; vision layers on/off; QLoRA 4-bit vs bf16. Run them on a fixed training subset to fit the Colab budget. Log quality, peak VRAM, GPU type, GPU hours and the derived $ cost.
-- [ ] `reports/ablations.md`, generated from tracker runs.
+Decisions (2026-11-07):
+
+- **Compute: free Colab (T4) only.** A T4 needs about 17 s per step (batch 8, float32: Unsloth says float16 does not work for qwen3_5, and the T4 has no bf16). One epoch of the full split is about 8,600 steps (about 40 h), so the full run uses a fixed subset.
+- **Tracker: W&B.** No server, free, and TRL supports it.
+- **DVC moves to Phase 3.** The data has versions already (pinned HF revision + frozen manifests with sha256). Phase 3 makes local synthetic data, and DVC is useful there.
+
+Items:
+
+- [X] W&B logging for train and eval runs (`tracking` config section). The W&B run ID and the train time go into each checkpoint, so `--resume` continues the same W&B run and the cost counts all sessions.
+- [X] $ cost from public GPU prices (`configs/gpu_prices.yaml`, `mathscribe.cost`).
+- [X] HF Hub as the model registry with auto-generated model cards (`mathscribe.train.model_card`).
+- [X] Validation during training: `eval_loss` on 200 val rows, early stopping, best-checkpoint selection (`configs/train/sft_base.yaml`).
+- [ ] Short check run on Colab (about 20 steps) for validation, early stopping, W&B, the model card and `--resume`, before the long runs.
+- [ ] One-factor-at-a-time ablations on a fixed subset (about 4,000 rows, 500 steps, about 2.4 h each on a T4), compared on the **val** set only: base LoRA r=16; DoRA; rsLoRA; r ∈ {8, 64}; vision layers off; QLoRA 4-bit vs 16-bit (float32 on a T4). First check that Unsloth's `get_peft_model` accepts DoRA. Log quality, peak VRAM, GPU type, GPU hours and the derived $ cost.
+- [ ] Full SFT run (`sft_base.yaml`: 12,000 rows, 1 epoch, 1,500 steps, about 7 h on a T4, 2–3 sessions with `--resume` and `USE_DRIVE = True`). Use the best ablation settings. Then evaluate on val and on both test sets.
+- [ ] `reports/ablations.md`, generated from the committed result JSONs and `run_info.json` files, with a W&B link for each row (no W&B key needed to build it).
 
 **Done when:** the README shows a real SFT vs zero-shot delta and the ablation table, all linked to tracker runs.
 
@@ -100,6 +112,7 @@ mathscribe/
 - [ ] `rewards/`: compile reward (0/1), render-similarity reward (SSIM against the target render), length/format penalties.
 - [ ] GRPO from the best SFT checkpoint (TRL/Unsloth GRPOTrainer), tracking reward curves. GRPO generates several samples for each image, so it needs much more memory and time than SFT. Run it on Colab Pro (L4/A100) or a rented GPU (Modal/RunPod), with QLoRA and a small group size. Fallback: run GRPO on a 2B model.
 - [ ] DPO on hard negatives: sample N outputs and pair correct ones with ones that compile but render wrong.
+- [ ] DVC for the local datasets (moved from Phase 2): the synthetic data and its renders.
 - [ ] Synthetic data engine: LaTeX from arXiv sources → render with varied fonts → augment (blur, rotation, paper texture, ink strokes), with a curriculum ordered by difficulty.
 - [ ] Optional: distill to a small VLM (0.8–2B or SmolVLM) for CPU/WebGPU inference.
 

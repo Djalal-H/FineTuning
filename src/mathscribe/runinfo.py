@@ -16,6 +16,20 @@ def git_commit() -> str | None:
         return None
 
 
+def git_remote() -> str | None:
+    """The URL of the ``origin`` remote, as a web URL when it is a GitHub URL."""
+    try:
+        out = subprocess.run(
+            ["git", "remote", "get-url", "origin"], capture_output=True, text=True, check=True
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    url = out.stdout.strip()
+    if url.startswith("git@github.com:"):
+        url = "https://github.com/" + url.removeprefix("git@github.com:")
+    return url.removesuffix(".git") or None
+
+
 def git_dirty() -> bool | None:
     """True if the working tree has uncommitted changes to tracked or new files."""
     try:

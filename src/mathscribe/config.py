@@ -59,12 +59,41 @@ class HubConfig:
 
 
 @dataclass
+class TrackingConfig:
+    """W&B logging (see ``mathscribe.tracking``). Training and evaluation use the same section.
+
+    This section is the only switch: ``train.report_to`` is set from ``enabled``.
+    """
+
+    enabled: bool = False
+    project: str = "mathscribe"
+    entity: str | None = None  # W&B team or user; None = the default entity of the API key
+    group: str | None = None  # None = the run name (training) or the model run name (eval)
+    tags: list[str] = field(default_factory=list)
+
+
+@dataclass
+class ValidationConfig:
+    """The validation set for ``eval_loss`` during training and for early stopping.
+
+    ``manifest`` must also be in ``data.exclude``, so that training never sees these rows.
+    """
+
+    manifest: str | None = None  # e.g. data/testsets/latex_ocr_val.json; None = no validation
+    samples: int | None = None  # the first N rows of the manifest; None = all rows
+    early_stopping_patience: int | None = None  # evaluations without improvement; None = off
+    early_stopping_threshold: float = 0.0
+
+
+@dataclass
 class SFTRunConfig:
     run_name: str
     model: ModelConfig = field(default_factory=ModelConfig)
     lora: LoraConfig = field(default_factory=LoraConfig)
     data: DataConfig = field(default_factory=DataConfig)
+    validation: ValidationConfig = field(default_factory=ValidationConfig)
     hub: HubConfig = field(default_factory=HubConfig)
+    tracking: TrackingConfig = field(default_factory=TrackingConfig)
     # Passed as-is to trl.SFTConfig (see mathscribe.train.sft.build_sft_args).
     train: dict[str, Any] = field(default_factory=dict)
 
@@ -76,7 +105,14 @@ class SFTRunConfig:
         return dataclasses.asdict(self)
 
 
-_SECTIONS = {"model": ModelConfig, "lora": LoraConfig, "data": DataConfig, "hub": HubConfig}
+_SECTIONS = {
+    "model": ModelConfig,
+    "lora": LoraConfig,
+    "data": DataConfig,
+    "validation": ValidationConfig,
+    "hub": HubConfig,
+    "tracking": TrackingConfig,
+}
 
 
 def parse_override(override: str) -> tuple[list[str], Any]:
@@ -131,7 +167,37 @@ def config_from_dict(raw: dict[str, Any]) -> SFTRunConfig:
     )
     if cfg.hub.push and not cfg.hub.repo_id:
         raise ConfigError("'hub.repo_id' is required when 'hub.push' is true")
+    if "report_to" in cfg.train:
+        raise ConfigError("Do not set 'train.report_to'. Use 'tracking.enabled' instead")
+    check_validation(cfg)
     return cfg
+
+
+def check_validation(cfg: SFTRunConfig) -> None:
+    """The validation settings and the ``train`` evaluation arguments must agree."""
+    val, train = cfg.validation, cfg.train
+    # YAML reads a bare `no` as False, so both forms mean "no evaluation".
+    evaluates = train.get("eval_strategy", "no") not in ("no", False, None)
+    if val.manifest is None:
+        if evaluates:
+            raise ConfigError("'train.eval_strategy' needs 'validation.manifest'")
+        if val.early_stopping_patience is not None:
+            raise ConfigError("'validation.early_stopping_patience' needs 'validation.manifest'")
+        return
+    if not evaluates:
+        raise ConfigError("'validation.manifest' needs 'train.eval_strategy' (e.g. steps)")
+    if Path(val.manifest) not in {Path(p) for p in cfg.data.exclude}:
+        raise ConfigError(
+            f"'validation.manifest' ({val.manifest}) must also be in 'data.exclude', "
+            "or training sees the validation rows"
+        )
+    if val.samples is not None and val.samples < 1:
+        raise ConfigError("'validation.samples' must be >= 1 or null")
+    if val.early_stopping_patience is not None:
+        if val.early_stopping_patience < 1:
+            raise ConfigError("'validation.early_stopping_patience' must be >= 1 or null")
+        if not train.get("load_best_model_at_end"):
+            raise ConfigError("Early stopping needs 'train.load_best_model_at_end: true'")
 
 
 def load_config(path: str | Path, overrides: list[str] | None = None) -> SFTRunConfig:
