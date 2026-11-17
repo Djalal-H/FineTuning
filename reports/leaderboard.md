@@ -27,13 +27,19 @@ How to read the intervals (bootstrap, 2000 resamples, see
 
 | Model | Exact | Norm. match | Δ norm. | CER | BLEU | Compile | Render match | Δ render | Empty | GPU | img/s | Commit | Date |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| GOT-OCR 2.0 (format mode) | 17.6 | **17.8 [15.5, 20.2]** | - | 92.3 [72.5, 115.6] | 33.3 | 86.5 | **18.4 [16.0, 20.7]** | - | 0.0 | NVIDIA GeForce RTX 3060 Laptop GPU | 1.11 | `dce1af4`+ | 2026-11-07 |
-| pix2tex 0.1.4 | 0.1 | **0.1 [0.0, 0.3]** | - | 351.0 [327.0, 376.8] | 1.9 | 65.2 | **0.3 [0.0, 0.7]** | - | 0.0 | NVIDIA GeForce RTX 3060 Laptop GPU | 1.82 | `dce1af4`+ | 2026-11-07 |
+| Qwen3.5-9B (zero-shot, 4-bit) | 64.2 | **68.0 [65.0, 70.8]** | +15.5 [+12.4, +18.7] * | 9.5 [8.3, 10.9] | 89.2 | 100.0 | **73.0 [70.2, 75.7]** | +9.7 [+6.9, +12.9] * | 0.0 | Tesla T4 | 0.34 | `25e27ef` | 2026-11-17 |
+| Qwen3.5-4B + LoRA (sft_smoke, 15 steps) | 58.3 | **60.3 [57.2, 63.4]** | +7.9 [+5.1, +11.0] * | 16.2 [10.2, 24.8] | 79.4 | 99.8 | **63.2 [60.2, 66.2]** | -0.1 [-2.7, +2.6] | 0.0 | Tesla T4 | 0.49 | `25e27ef` | 2026-11-16 |
+| Qwen3.5-4B (zero-shot) | 50.0 | **52.4 [49.3, 55.5]** | baseline | 21.5 [14.2, 34.2] | 76.7 | 99.5 | **63.3 [60.1, 66.2]** | baseline | 0.2 | Tesla T4 | 0.48 | `25e27ef` | 2026-11-16 |
+| GOT-OCR 2.0 (format mode) | 17.6 | **17.8 [15.5, 20.2]** | -34.6 [-38.0, -31.0] * | 92.3 [72.5, 115.6] | 33.3 | 86.5 | **18.4 [16.0, 20.7]** | -44.9 [-48.3, -41.3] * | 0.0 | NVIDIA GeForce RTX 3060 Laptop GPU | 1.11 | `dce1af4`+ | 2026-11-07 |
+| pix2tex 0.1.4 | 0.1 | **0.1 [0.0, 0.3]** | -52.3 [-55.4, -49.2] * | 351.0 [327.0, 376.8] | 1.9 | 65.2 | **0.3 [0.0, 0.7]** | -63.0 [-65.9, -59.8] * | 0.0 | NVIDIA GeForce RTX 3060 Laptop GPU | 1.82 | `dce1af4`+ | 2026-11-07 |
 
 Normalized match for each difficulty bucket (the number of rows is in brackets):
 
 | Model | len:short | len:medium | len:long | matrix | nested_frac |
 |---|---|---|---|---|---|
+| Qwen3.5-9B (zero-shot, 4-bit) | 69.6 (935) | 37.8 (45) | 33.3 (6) | - | 33.3 (6) |
+| Qwen3.5-4B + LoRA (sft_smoke, 15 steps) | 62.0 (935) | 33.3 (45) | 0.0 (6) | - | 50.0 (6) |
+| Qwen3.5-4B (zero-shot) | 54.1 (935) | 24.4 (45) | 0.0 (6) | - | 0.0 (6) |
 | GOT-OCR 2.0 (format mode) | 18.6 (935) | 4.4 (45) | 0.0 (6) | - | 0.0 (6) |
 | pix2tex 0.1.4 | 0.1 (935) | 0.0 (45) | 0.0 (6) | - | 0.0 (6) |
 
@@ -43,18 +49,18 @@ Normalized match for each difficulty bucket (the number of rows is in brackets):
 
 | Model | Exact | Norm. match | Δ norm. | CER | BLEU | Compile | Render match | Δ render | Empty | GPU | img/s | Commit | Date |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Qwen3.5-4B + LoRA (sft_smoke, 15 steps) | 42.5 | **54.2 [51.1, 57.2]** | +8.1 [+5.6, +10.7] * | 7.4 [5.4, 10.4] | 90.0 | - | **-** | - | 0.0 | Tesla T4 | 0.41 | `dce1af4` | 2026-11-06 |
-| Qwen3.5-4B (zero-shot) | 35.1 | **46.1 [43.1, 49.2]** | baseline | 8.6 [6.2, 12.7] | 88.0 | - | **-** | baseline | 0.0 | Tesla T4 | 0.70 | `dce1af4` | 2026-11-06 |
-| pix2tex 0.1.4 | 32.3 | **40.3 [37.2, 43.3]** | - | 10.0 [8.8, 11.5] | 87.1 | 98.6 | **52.8 [49.5, 55.8]** | - | 0.1 | NVIDIA GeForce RTX 3060 Laptop GPU | 2.02 | `dce1af4`+ | 2026-11-07 |
-| GOT-OCR 2.0 (format mode) | 8.1 | **26.6 [24.1, 29.4]** | - | 26.3 [21.1, 32.5] | 71.7 | 96.9 | **39.3 [36.2, 42.4]** | - | 0.0 | NVIDIA GeForce RTX 3060 Laptop GPU | 0.74 | `dce1af4`+ | 2026-11-07 |
-
-Older scorer (version < 2), not compared with newer runs: Qwen3.5-4B + LoRA (sft_smoke, 15 steps), Qwen3.5-4B (zero-shot). Score them again with the `jsonl` backend, or run them again.
+| Qwen3.5-4B + LoRA (sft_smoke, 15 steps) | 42.4 | **55.5 [52.4, 58.5]** | +8.5 [+6.0, +11.1] * | 7.2 [5.1, 10.1] | 90.4 | 99.7 | **72.7 [70.1, 75.5]** | +0.6 [-1.6, +2.9] | 0.0 | Tesla T4 | 0.71 | `25e27ef` | 2026-11-16 |
+| Qwen3.5-9B (zero-shot, 4-bit) | 38.7 | **50.7 [47.6, 53.8]** | +3.7 [+0.7, +6.8] * | 5.6 [5.1, 6.3] | 91.4 | 99.9 | **73.0 [70.3, 75.8]** | +0.9 [-1.7, +3.6] | 0.0 | Tesla T4 | 0.43 | `25e27ef` | 2026-11-16 |
+| Qwen3.5-4B (zero-shot) | 35.1 | **47.0 [43.9, 50.1]** | baseline | 8.4 [6.0, 12.6] | 88.1 | 99.7 | **72.1 [69.2, 75.0]** | baseline | 0.0 | Tesla T4 | 0.74 | `25e27ef` | 2026-11-16 |
+| pix2tex 0.1.4 | 32.3 | **40.3 [37.2, 43.3]** | -6.7 [-9.8, -3.6] * | 10.0 [8.8, 11.5] | 87.1 | 98.6 | **52.8 [49.5, 55.8]** | -19.3 [-22.7, -16.1] * | 0.1 | NVIDIA GeForce RTX 3060 Laptop GPU | 2.02 | `dce1af4`+ | 2026-11-07 |
+| GOT-OCR 2.0 (format mode) | 8.1 | **26.6 [24.1, 29.4]** | -20.4 [-23.8, -16.9] * | 26.3 [21.1, 32.5] | 71.7 | 96.9 | **39.3 [36.2, 42.4]** | -32.8 [-36.2, -29.5] * | 0.0 | NVIDIA GeForce RTX 3060 Laptop GPU | 0.74 | `dce1af4`+ | 2026-11-07 |
 
 Normalized match for each difficulty bucket (the number of rows is in brackets):
 
 | Model | len:short | len:medium | len:long | matrix | nested_frac |
 |---|---|---|---|---|---|
-| Qwen3.5-4B + LoRA (sft_smoke, 15 steps) | 70.4 (358) | 56.9 (320) | 33.5 (322) | 0.0 (47) | 13.3 (15) |
-| Qwen3.5-4B (zero-shot) | 60.3 (358) | 49.1 (320) | 27.3 (322) | 0.0 (47) | 20.0 (15) |
+| Qwen3.5-4B + LoRA (sft_smoke, 15 steps) | 70.8 (359) | 57.6 (323) | 36.2 (318) | 31.9 (47) | 13.3 (15) |
+| Qwen3.5-9B (zero-shot, 4-bit) | 60.7 (359) | 54.2 (323) | 35.8 (318) | 21.3 (47) | 33.3 (15) |
+| Qwen3.5-4B (zero-shot) | 60.2 (359) | 49.5 (323) | 29.6 (318) | 19.1 (47) | 20.0 (15) |
 | pix2tex 0.1.4 | 50.1 (359) | 42.1 (323) | 27.4 (318) | 21.3 (47) | 0.0 (15) |
 | GOT-OCR 2.0 (format mode) | 39.0 (359) | 23.2 (323) | 16.0 (318) | 19.1 (47) | 6.7 (15) |
