@@ -146,3 +146,21 @@ def test_dry_run_prints_resolved_config(capsys):
     out = json.loads(capsys.readouterr().out)
     assert out["sft_args"]["max_steps"] == 2
     assert out["config"]["model"]["name"] == "unsloth/Qwen3.5-4B"
+
+
+def test_resume_if_available_starts_a_new_run_without_checkpoint(tmp_path, monkeypatch):
+    monkeypatch.setattr(sft, "download_hub_checkpoint", lambda *a: None)
+    cfg = _cfg(tmp_path, "hub.push=true", "hub.repo_id=me/x")
+    assert sft.resolve_resume_checkpoint(cfg, required=False) is None
+
+
+def test_resume_if_available_uses_a_checkpoint_when_there_is_one(tmp_path, monkeypatch):
+    _make_ckpt(tmp_path, "checkpoint-5", global_step=5)
+    monkeypatch.setattr(sft, "download_hub_checkpoint", lambda *a: None)
+    cfg = _cfg(tmp_path, "hub.push=true", "hub.repo_id=me/x")
+    assert sft.resolve_resume_checkpoint(cfg, required=False).name == "checkpoint-5"
+
+
+def test_resume_flags_exclude_each_other():
+    with pytest.raises(SystemExit, match="not both"):
+        sft.main(["--config", "configs/train/sft_smoke.yaml", "--resume", "--resume-if-available"])

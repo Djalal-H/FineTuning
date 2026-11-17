@@ -118,8 +118,11 @@ def download_hub_checkpoint(repo_id: str, dest: Path) -> Path | None:
     return dest / HUB_CHECKPOINT_DIR
 
 
-def resolve_resume_checkpoint(cfg: SFTRunConfig) -> Path:
-    """Pick the most advanced checkpoint from the local output_dir and the Hub."""
+def resolve_resume_checkpoint(cfg: SFTRunConfig, required: bool = True) -> Path | None:
+    """Pick the most advanced checkpoint from the local output_dir and the Hub.
+
+    With ``required=False``, return None when there is no checkpoint (a new run).
+    """
     candidates: list[Path] = []
     local = find_last_local_checkpoint(cfg.output_dir)
     if local is not None:
@@ -128,6 +131,9 @@ def resolve_resume_checkpoint(cfg: SFTRunConfig) -> Path:
         hub = download_hub_checkpoint(cfg.hub.repo_id, cfg.output_dir / HUB_RESUME_DIR)
         if hub is not None:
             candidates.append(hub)
+    if not candidates and not required:
+        log.info("No checkpoint in %s or on the Hub: starting a new run", cfg.output_dir)
+        return None
     if not candidates:
         raise SystemExit(
             f"--resume: no checkpoint in {cfg.output_dir} "
@@ -153,6 +159,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--resume",
         action="store_true",
         help="Resume from the latest checkpoint (local output_dir or Hub last-checkpoint)",
+    )
+    p.add_argument(
+        "--resume-if-available",
+        action="store_true",
+        help="Like --resume, but start a new run when there is no checkpoint (for job runners)",
     )
     p.add_argument(
         "--dry-run", action="store_true", help="Print the resolved config and SFT args, then exit"
@@ -357,7 +368,11 @@ def main(argv: list[str] | None = None) -> None:
         print(json.dumps({"config": cfg.to_dict(), "sft_args": build_sft_args(cfg)}, indent=2))
         return
 
-    resume_from = resolve_resume_checkpoint(cfg) if args.resume else None
+    if args.resume and args.resume_if_available:
+        raise SystemExit("Use --resume or --resume-if-available, not both")
+    resume_from = None
+    if args.resume or args.resume_if_available:
+        resume_from = resolve_resume_checkpoint(cfg, required=args.resume)
     run(cfg, resume_from)
 
 
