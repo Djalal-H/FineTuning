@@ -1,4 +1,54 @@
+import sys
+import types
+
+import pytest
+
 from mathscribe import tracking
+
+
+def _fake_wandb(monkeypatch, login):
+    """Put a fake wandb module in place. ``login`` is the fake wandb.login."""
+    mod = types.ModuleType("wandb")
+    mod.login = login
+    mod.errors = types.SimpleNamespace(UsageError=type("UsageError", (Exception,), {}))
+    monkeypatch.setitem(sys.modules, "wandb", mod)
+    monkeypatch.delenv("WANDB_MODE", raising=False)
+    return mod
+
+
+def test_ensure_login_new_wandb(monkeypatch):
+    calls = []
+
+    def login(prompt=True, verify=True):
+        calls.append((prompt, verify))
+        return True
+
+    _fake_wandb(monkeypatch, login)
+    tracking.ensure_login()
+    assert calls == [(False, False)]
+
+
+def test_ensure_login_old_wandb_with_key(monkeypatch):
+    calls = []
+
+    def login(verify=True):  # no `prompt` argument, like the wandb on Kaggle
+        calls.append(verify)
+        return True
+
+    _fake_wandb(monkeypatch, login)
+    monkeypatch.setenv("WANDB_API_KEY", "key")
+    tracking.ensure_login()
+    assert calls == [False]
+
+
+def test_ensure_login_old_wandb_without_key_stops(monkeypatch):
+    def login(verify=True):
+        raise AssertionError("login() must not run without a key")
+
+    _fake_wandb(monkeypatch, login)
+    monkeypatch.delenv("WANDB_API_KEY", raising=False)
+    with pytest.raises(SystemExit, match="no login"):
+        tracking.ensure_login()
 
 
 def test_flatten():

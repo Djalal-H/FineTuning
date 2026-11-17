@@ -29,12 +29,17 @@ def ensure_login() -> None:
 
     if os.environ.get("WANDB_MODE") in ("offline", "disabled"):
         return  # offline runs need no API key (sync them later with `wandb sync`)
+    reason = "no API key"
     try:
         ok = wandb.login(prompt=False, verify=False)
+    except TypeError:
+        # An older wandb (for example the one on Kaggle) has no `prompt` argument.
+        # Do not call login() without a key: it can ask for input in a notebook.
+        ok = bool(os.environ.get("WANDB_API_KEY"))
+        if ok:
+            ok = wandb.login(verify=False)
     except wandb.errors.UsageError as e:
         ok, reason = False, str(e)
-    else:
-        reason = "no API key"
     if not ok:
         raise SystemExit(
             f"tracking.enabled is true, but W&B has no login ({reason}). "
