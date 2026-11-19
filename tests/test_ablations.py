@@ -91,13 +91,13 @@ def test_build_jobs_covers_every_run_and_loads_every_config(tmp_path):
 
 
 def test_train_command_resumes_pushes_and_sets_its_factor(tmp_path):
-    job = _jobs(tmp_path, ["dora"])[0]
+    job = _jobs(tmp_path, ["rslora"])[0]
     cmd = job.steps[0].command()
     assert "--resume-if-available" in cmd
-    assert "lora.use_dora=true" in cmd
-    assert "hub.repo_id=djaloul/mathscribe-abl-dora" in cmd
-    assert f"train.output_dir={tmp_path / 'out' / 'abl_dora'}" in cmd
-    assert job.steps[0].done_file == tmp_path / "out" / "abl_dora" / "run_info.json"
+    assert "lora.use_rslora=true" in cmd
+    assert "hub.repo_id=djaloul/mathscribe-abl-rslora" in cmd
+    assert f"train.output_dir={tmp_path / 'out' / 'abl_rslora'}" in cmd
+    assert job.steps[0].done_file == tmp_path / "out" / "abl_rslora" / "run_info.json"
 
 
 def test_eval_uses_the_local_adapter_if_it_exists_else_the_hub(tmp_path):
@@ -185,3 +185,10 @@ def test_run_jobs_skips_finished_steps_and_keeps_going_after_a_failure(tmp_path)
     assert by_name["broken"].failed_step == "step0"
     assert not broken.steps[1].done_file.exists()  # the next step of a failed job does not run
     assert by_name["fine"].status == "done"
+
+
+@pytest.mark.parametrize("run", SPEC.get("skipped", []), ids=lambda r: r["name"])
+def test_skipped_runs_have_a_reason_and_are_not_scheduled(run):
+    assert run["reason"].strip()
+    assert run["name"] not in {r["name"] for r in SPEC["runs"]}
+    load_config(BASE, run["overrides"])  # the override is still a valid config

@@ -53,7 +53,7 @@ Facts to remember:
 - Without `USE_DRIVE = True`, a Colab disconnect deletes the local files. The Hub keeps the latest checkpoint.
 - The notebook uses text-then-image order in training, but image-then-text order in inference. Use the training order everywhere.
 
-### Phase 1: done (evaluation harness and baselines)
+### Phase 1: done (evaluation harness and baselines, one item is open)
 
 What was done:
 
@@ -65,9 +65,12 @@ What was done:
 - `run_eval.py` backends: `unsloth`, `anthropic`, `pix2tex`, `got_ocr`, `jsonl` (replay). It writes `reports/results/<run>__<testset>_n<N>.json` and builds `reports/leaderboard.md`.
 - Extras: `api` (anthropic), `baselines` (pix2tex, GOT-OCR). `baselines` conflicts with `train` in `[tool.uv]`.
 
-Open items:
+Done after the phase:
 
-- Run on Colab, both test sets: `qwen35_4b_zeroshot`, `sft_smoke`, `qwen35_9b_zeroshot`. The old n=1000 Qwen results have no render metrics.
+- `qwen35_4b_zeroshot`, `sft_smoke`, and `qwen35_9b_zeroshot` have results on both test sets, with render metrics (`reports/results/`).
+
+Open item:
+
 - Run `claude_opus55.yaml` locally. It needs an Anthropic credential.
 
 Facts to remember:
@@ -82,3 +85,31 @@ Facts to remember:
 - GOT-OCR needs about 5.3 GB for a batch of 2. It wraps formulas in a one-cell `array` and adds text after `\]`. The normalizer and `extract_latex` handle both, for every model.
 - The shell `grep` is an alias for `ugrep` with recursive options. In pipelines, use `command grep`.
 - Each result stores `git_dirty`. The leaderboard shows `+` after the commit for runs with uncommitted changes.
+
+### Phase 2: in progress (proper SFT, ablations, and tracking)
+
+What was done:
+
+- W&B tracking (`tracking` config section). Each checkpoint stores the W&B run ID and the train time, so `--resume` continues the same W&B run.
+- The $ cost from `configs/gpu_prices.yaml` (`mathscribe.cost`). Auto-generated model cards on the HF Hub (`mathscribe.train.model_card`).
+- Validation during training: `eval_loss` on 200 val rows, early stopping, and best-checkpoint selection (`configs/train/sft_base.yaml`).
+- The check run on Kaggle (20 steps, `--resume` from the Hub) passed.
+- Ablation configs: `configs/train/ablation_base.yaml` (4,000 rows, 500 steps) and `configs/ablations.yaml` (6 runs, plus a `skipped` list).
+- The ablation runner `mathscribe.ablations`: one worker for each GPU, train then val eval, `--resume-if-available`, `--dry-run`.
+- `NanGuard` stops a run at the first loss that is not finite. It does not save or push the adapter after that.
+- `notebooks/kaggle_runner.ipynb` defaults are the real ablations (all runs, 500 steps, 500 val rows, no tag).
+
+Next steps:
+
+1. Run the real ablations on Kaggle (`TASK = "ablation"`, two T4 GPUs).
+2. Write the `reports/ablations.md` generator (no GPU).
+3. Do the full SFT run with `sft_base.yaml` and the best ablation settings.
+4. Evaluate it on val and on both test sets. Put the SFT vs zero-shot delta and the ablation table in the README.
+
+Facts to remember:
+
+- Compute is free Colab or Kaggle T4 only. A T4 has no bf16, and float16 does not work for qwen3_5, so 16-bit runs use float32.
+- On a Kaggle T4, a step takes about 14 s (validation included). The peak memory was 9.3 GB of 14.6 GB.
+- DoRA does not train here: the loss was `nan` from step 1 (Kaggle, 2026-11-17). It is in the `skipped` list.
+- The Kaggle notebook clones `BRANCH` from GitHub. Push all changes before a Kaggle run.
+- Early stopping has unit tests only. No GPU run triggered it.

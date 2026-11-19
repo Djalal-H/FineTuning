@@ -203,7 +203,11 @@ def run(cfg: SFTRunConfig, resume_from: Path | None = None) -> dict[str, Any]:
     from unsloth.trainer import UnslothVisionDataCollator
 
     from mathscribe.data import load_latex_ocr
-    from mathscribe.train.run_state import make_run_state_callback, read_run_state
+    from mathscribe.train.run_state import (
+        make_nan_guard_callback,
+        make_run_state_callback,
+        read_run_state,
+    )
 
     model, tokenizer = FastVisionModel.from_pretrained(
         cfg.model.name,
@@ -255,6 +259,8 @@ def run(cfg: SFTRunConfig, resume_from: Path | None = None) -> dict[str, Any]:
             group=cfg.run_name,
             run_id=prior["wandb_run_id"],
         )
+    nan_guard = make_nan_guard_callback()
+    callbacks.append(nan_guard)
     callbacks.append(
         make_run_state_callback(wandb_run.id if wandb_run else None, prior["train_seconds"])
     )
@@ -277,6 +283,17 @@ def run(cfg: SFTRunConfig, resume_from: Path | None = None) -> dict[str, Any]:
     t0 = time.time()
     stats = trainer.train(resume_from_checkpoint=str(resume_from) if resume_from else None)
     wall_clock_s = time.time() - t0
+
+    if nan_guard.bad_step is not None:
+        # Stop before the adapter is saved or pushed: its weights are not usable.
+        message = (
+            f"Training stopped: {nan_guard.bad_metric} is not a finite number at step "
+            f"{nan_guard.bad_step}. Nothing was saved or pushed after this point."
+        )
+        log.error(message)
+        if wandb_run is not None:
+            wandb_run.finish(exit_code=1)
+        raise SystemExit(message)
 
     best = best_checkpoint_info(
         trainer.state.best_model_checkpoint,

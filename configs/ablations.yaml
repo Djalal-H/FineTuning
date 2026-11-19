@@ -12,7 +12,7 @@
 #     This is part of the method. The run shows the effect of the method with the base alpha.
 #   - QLoRA 4-bit loads the base model in 4 bits. The base run uses 16-bit (float32 on a T4,
 #     because the T4 has no bf16 and float16 does not work for qwen3_5).
-#   - DoRA needs a check on a GPU. If the run fails, remove it and record the reason.
+#   - DoRA is in `skipped` below: it gave a nan loss from step 1 (see there).
 base_config: configs/train/ablation_base.yaml
 hub_prefix: djaloul/mathscribe-abl      # the repo of a run is <hub_prefix>-<name>
 
@@ -20,9 +20,6 @@ runs:
   - name: base
     factor: "LoRA r=16 (base)"
     overrides: []
-  - name: dora
-    factor: "DoRA"
-    overrides: [lora.use_dora=true]
   - name: rslora
     factor: "rsLoRA"
     overrides: [lora.use_rslora=true]
@@ -38,3 +35,14 @@ runs:
   - name: qlora4
     factor: "QLoRA 4-bit"
     overrides: [model.load_in_4bit=true]
+
+# Runs that were tried and do not work. The ablation report lists them with the reason.
+skipped:
+  - name: dora
+    factor: "DoRA"
+    overrides: [lora.use_dora=true]
+    reason: >-
+      Smoke test on Kaggle (2026-11-17, Tesla T4, Unsloth 2026.11.6, PEFT 0.21.2,
+      Qwen3.5-4B, 16-bit float32, vision layers on): loss and grad_norm were nan from the
+      first logged step, so the adapter output was only "!" tokens (0% match on 20 val rows).
+      The same smoke test without DoRA trained normally (train_loss 0.56, eval_loss 0.117).

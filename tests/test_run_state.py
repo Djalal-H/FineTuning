@@ -53,3 +53,34 @@ def test_callback_state_adds_the_session_time(monkeypatch):
     monkeypatch.setattr(run_state.time, "time", lambda: 0.0)
     again = type(cb)(**state["args"])
     assert (again.wandb_run_id, again.prior_seconds) == ("abc123", 4200.0)
+
+
+def _guard_input(logs):
+    from types import SimpleNamespace
+
+    control = SimpleNamespace(should_training_stop=False)
+    state = SimpleNamespace(global_step=7)
+    return state, control, logs
+
+
+@pytest.mark.parametrize("key", ["loss", "eval_loss", "grad_norm"])
+@pytest.mark.parametrize("bad", [float("nan"), float("inf")])
+def test_nan_guard_stops_on_a_non_finite_value(key, bad):
+    from mathscribe.train.run_state import make_nan_guard_callback
+
+    guard = make_nan_guard_callback()
+    state, control, logs = _guard_input({key: bad, "learning_rate": 0.0})
+    guard.on_log(None, state, control, logs=logs)
+    assert control.should_training_stop is True
+    assert (guard.bad_step, guard.bad_metric) == (7, key)
+
+
+def test_nan_guard_ignores_normal_logs():
+    from mathscribe.train.run_state import make_nan_guard_callback
+
+    guard = make_nan_guard_callback()
+    for logs in ({"loss": 0.5, "grad_norm": 1.2}, {"learning_rate": 1e-4}, None):
+        state, control, logs = _guard_input(logs)
+        guard.on_log(None, state, control, logs=logs)
+        assert control.should_training_stop is False
+    assert guard.bad_step is None

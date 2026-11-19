@@ -71,3 +71,29 @@ def make_run_state_callback(wandb_run_id: str | None, prior_seconds: float = 0.0
 
     assert MathScribeRunState.__name__ == RUN_STATE_CALLBACK
     return MathScribeRunState(wandb_run_id, prior_seconds)
+
+
+def make_nan_guard_callback() -> Any:
+    """A trainer callback that stops the run at the first loss that is not a finite number.
+
+    A run with a ``nan`` loss has ``nan`` weights from then on. Without this callback it
+    trains to the last step (hours of GPU time), and it pushes ``nan`` checkpoints to the Hub.
+    """
+    import math
+
+    from transformers import TrainerCallback
+
+    class NanGuard(TrainerCallback):
+        def __init__(self) -> None:
+            self.bad_step: int | None = None
+            self.bad_metric: str | None = None
+
+        def on_log(self, args, state, control, logs=None, **kwargs):
+            for key in ("loss", "eval_loss", "grad_norm"):
+                value = (logs or {}).get(key)
+                if isinstance(value, (int, float)) and not math.isfinite(value):
+                    self.bad_step, self.bad_metric = state.global_step, key
+                    control.should_training_stop = True
+                    return
+
+    return NanGuard()
