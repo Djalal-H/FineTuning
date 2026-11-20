@@ -104,15 +104,17 @@ Items:
 - [X] Ablation configs: `configs/train/ablation_base.yaml` (4,000 rows, 500 steps, no early stopping) and `configs/ablations.yaml` (7 runs, one setting each). `lora.use_dora` is a config key now. Unsloth passes `use_dora` to PEFT. **DoRA does not train** here: the Kaggle smoke test (2026-11-17, T4, 16-bit, vision layers on) gave a `nan` loss from step 1. It is in the `skipped` list of `configs/ablations.yaml`. The runner stops a run at the first non-finite loss (`NanGuard`), so a bad setting cannot use hours of quota.
 - [X] Ablation runner `mathscribe.ablations` (`python -m mathscribe.ablations --dry-run` checks every config with no GPU). Each run trains, then evaluates on val. Jobs share a queue, one worker for each GPU, so two Kaggle T4 GPUs run two ablations at the same time. It skips finished steps, and `--resume-if-available` continues from the local or Hub checkpoint after a stop. `notebooks/kaggle_runner.ipynb` (`TASK = "ablation"`) starts it. The notebook defaults are a smoke test (10 steps, tag `smoke`).
 - [X] One-factor-at-a-time ablations on a fixed subset (4,000 rows, 500 steps), compared on the **val** set only (500 rows): base LoRA r=16; rsLoRA; r ∈ {8, 64}; vision layers off; QLoRA 4-bit vs 16-bit (float32 on a T4). DoRA is skipped (`nan` loss). Done on Kaggle (2026-11-19/20, two T4 GPUs): about 7 s per step, about 1 GPU hour each. Result: no run is better than the base run. rsLoRA is 2.6 points lower on normalized match (significant). QLoRA 4-bit has the same quality with 4.5 GB peak VRAM instead of about 9 GB.
-- [ ] Full SFT run (`sft_base.yaml`: 12,000 rows, 1 epoch, 1,500 steps, about 7 h on a T4, 2–3 sessions with `--resume` and `USE_DRIVE = True`). Use the best ablation settings. Then evaluate on val and on both test sets.
+- [ ] Full SFT run (`sft_base.yaml`: 12,000 rows, 1 epoch, 1,500 steps). **Not done:** the phase closed without it. The config is ready. The Phase 2 adapter is `abl_base` (`djaloul/mathscribe-abl-base`).
 - [X] `reports/ablations.md`, generated from the committed result JSONs and `run_info.json` files, with a W&B link for each row (no W&B key needed to build it): `python -m mathscribe.ablation_report`. It shows the paired Δ vs the base run.
 
 **Done when:** the README shows a real SFT vs zero-shot delta and the ablation table, all linked to tracker runs.
 
+**Closed (2026-11-20).** The README shows the ablation table and the `sft_smoke` vs zero-shot delta on both test sets. The full SFT run was not done, to save time.
+
 ## Phase 3: Advanced training: GRPO, DPO, synthetic data (≈1–2 weeks) ⭐ headline
 
 - [ ] `rewards/`: compile reward (0/1), render-similarity reward (SSIM against the target render), length/format penalties.
-- [ ] GRPO from the best SFT checkpoint (TRL/Unsloth GRPOTrainer), tracking reward curves. GRPO generates several samples for each image, so it needs much more memory and time than SFT. Run it on Colab Pro (L4/A100) or a rented GPU (Modal/RunPod), with QLoRA and a small group size. Fallback: run GRPO on a 2B model.
+- [ ] GRPO from the best SFT checkpoint (`abl_base`, see Phase 2) (TRL/Unsloth GRPOTrainer), tracking reward curves. GRPO generates several samples for each image, so it needs much more memory and time than SFT. Run it on Colab Pro (L4/A100) or a rented GPU (Modal/RunPod), with QLoRA and a small group size. Fallback: run GRPO on a 2B model.
 - [ ] DPO on hard negatives: sample N outputs and pair correct ones with ones that compile but render wrong.
 - [ ] DVC for the local datasets (moved from Phase 2): the synthetic data and its renders.
 - [ ] Synthetic data engine: LaTeX from arXiv sources → render with varied fonts → augment (blur, rotation, paper texture, ink strokes), with a curriculum ordered by difficulty.

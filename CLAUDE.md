@@ -26,7 +26,7 @@ Code, commands, file paths, and identifiers are not part of STE. Write them exac
 
 The roadmap is in `PLAN.md`. Update this section at the end of each phase.
 
-### Phase 0: done (one check is open)
+### Phase 0: done
 
 What was done:
 
@@ -53,7 +53,7 @@ Facts to remember:
 - Without `USE_DRIVE = True`, a Colab disconnect deletes the local files. The Hub keeps the latest checkpoint.
 - The notebook uses text-then-image order in training, but image-then-text order in inference. Use the training order everywhere.
 
-### Phase 1: done (evaluation harness and baselines, one item is open)
+### Phase 1: done (evaluation harness and baselines)
 
 What was done:
 
@@ -69,9 +69,9 @@ Done after the phase:
 
 - `qwen35_4b_zeroshot`, `sft_smoke`, and `qwen35_9b_zeroshot` have results on both test sets, with render metrics (`reports/results/`).
 
-Open item:
+Not done when the phase closed:
 
-- Run `claude_opus55.yaml` locally. It needs an Anthropic credential.
+- The `claude_opus55.yaml` baseline has no result. It needs an Anthropic credential.
 
 Facts to remember:
 
@@ -86,7 +86,7 @@ Facts to remember:
 - The shell `grep` is an alias for `ugrep` with recursive options. In pipelines, use `command grep`.
 - Each result stores `git_dirty`. The leaderboard shows `+` after the commit for runs with uncommitted changes.
 
-### Phase 2: in progress (proper SFT, ablations, and tracking)
+### Phase 2: done (proper SFT, ablations, and tracking), closed 2026-11-20
 
 What was done:
 
@@ -107,12 +107,16 @@ Ablation results (val, 500 rows):
 - rsLoRA is 2.6 points lower on normalized match. This is the only significant difference.
 - QLoRA 4-bit has the same quality, with 4.5 GB peak VRAM instead of about 9 GB. It is about 20% slower per step.
 
-Next steps:
+Final results:
 
-1. Select the settings for the full SFT run, from `reports/ablations.md`.
-2. Do the full SFT run with `sft_base.yaml` on Kaggle (`TASK = "train"`).
-3. Evaluate it on val and on both test sets. Also run `qwen35_4b_zeroshot` on the val set.
-4. Put the SFT vs zero-shot delta and the ablation table in the README.
+- The ablation table is in `reports/ablations.md`. The README has the headline numbers.
+- The SFT vs zero-shot delta in the README is `sft_smoke` (15 steps) on both test sets: +8.5 points normalized match on `latex_ocr_test`, +7.9 on `crohme2014`. Render match did not change.
+- The Phase 2 adapter is `abl_base` (`djaloul/mathscribe-abl-base`, 4,000 rows, 500 steps). Phase 3 starts from it.
+
+Not done when the phase closed (the user closed the phase to save time):
+
+- The full SFT run (`sft_base.yaml`, 12,000 rows). The config is ready.
+- `abl_base` has no result on the test sets, and `qwen35_4b_zeroshot` has no result on the val set.
 
 Facts to remember:
 
