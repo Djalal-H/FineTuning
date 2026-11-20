@@ -64,3 +64,27 @@ Normalized match for each difficulty bucket (the number of rows is in brackets):
 | Qwen3.5-4B (zero-shot) | 60.2 (359) | 49.5 (323) | 29.6 (318) | 19.1 (47) | 20.0 (15) |
 | pix2tex 0.1.4 | 50.1 (359) | 42.1 (323) | 27.4 (318) | 21.3 (47) | 0.0 (15) |
 | GOT-OCR 2.0 (format mode) | 39.0 (359) | 23.2 (323) | 16.0 (318) | 19.1 (47) | 6.7 (15) |
+
+## latex_ocr_val, n=500
+
+`unsloth/LaTeX_OCR` split `train` at revision `4da395c8a025`. Rows sha256 `ecc9b49c38c1c363`. Baseline: `qwen35_4b_zeroshot`.
+
+| Model | Exact | Norm. match | Δ norm. | CER | BLEU | Compile | Render match | Δ render | Empty | GPU | img/s | Commit | Date |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Ablation QLoRA 4-bit | 56.4 | **68.2 [64.4, 72.2]** | - | 2.9 [2.4, 3.4] | 94.5 | 99.8 | **81.4 [77.9, 84.8]** | - | 0.0 | Tesla T4 | 0.62 | `9780224` | 2026-11-20 |
+| Ablation LoRA r=16 (base) | 57.0 | **68.0 [64.0, 72.4]** | - | 3.0 [2.4, 3.6] | 94.4 | 99.8 | **82.0 [78.5, 85.4]** | - | 0.0 | Tesla T4 | 0.63 | `9780224` | 2026-11-19 |
+| Ablation r=8 | 56.8 | **67.8 [63.6, 72.0]** | - | 2.9 [2.4, 3.4] | 94.4 | 99.8 | **81.4 [77.8, 84.8]** | - | 0.0 | Tesla T4 | 0.72 | `9780224` | 2026-11-19 |
+| Ablation vision layers off | 55.8 | **67.0 [62.8, 71.2]** | - | 3.2 [2.5, 3.9] | 94.1 | 99.8 | **81.2 [77.6, 84.5]** | - | 0.0 | Tesla T4 | 0.74 | `9780224` | 2026-11-20 |
+| Ablation r=64 | 55.0 | **66.4 [62.4, 70.6]** | - | 6.7 [3.1, 11.7] | 91.3 | 98.6 | **81.0 [77.6, 84.2]** | - | 0.0 | Tesla T4 | 0.52 | `9780224` | 2026-11-20 |
+| Ablation rsLoRA | 54.2 | **65.4 [61.4, 69.6]** | - | 3.4 [2.6, 4.3] | 93.8 | 99.4 | **80.0 [76.4, 83.4]** | - | 0.0 | Tesla T4 | 0.65 | `9780224` | 2026-11-19 |
+
+Normalized match for each difficulty bucket (the number of rows is in brackets):
+
+| Model | len:short | len:medium | len:long | matrix | nested_frac |
+|---|---|---|---|---|---|
+| Ablation QLoRA 4-bit | 73.7 (175) | 76.1 (155) | 55.3 (170) | 63.6 (22) | 66.7 (3) |
+| Ablation LoRA r=16 (base) | 72.0 (175) | 74.8 (155) | 57.6 (170) | 59.1 (22) | 66.7 (3) |
+| Ablation r=8 | 72.6 (175) | 76.1 (155) | 55.3 (170) | 50.0 (22) | 33.3 (3) |
+| Ablation vision layers off | 72.6 (175) | 72.3 (155) | 56.5 (170) | 54.5 (22) | 33.3 (3) |
+| Ablation r=64 | 69.7 (175) | 72.9 (155) | 57.1 (170) | 59.1 (22) | 66.7 (3) |
+| Ablation rsLoRA | 71.4 (175) | 72.9 (155) | 52.4 (170) | 54.5 (22) | 66.7 (3) |

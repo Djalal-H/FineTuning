@@ -1,0 +1,135 @@
+{
+  "run_name": "abl_qlora4",
+  "git_commit": "9780224f4648251236488d5a28caed349e94f27a",
+  "git_dirty": false,
+  "git_remote": "https://github.com/Djalal-H/FineTuning",
+  "resumed_from": null,
+  "train_rows": 4000,
+  "eval_rows": 200,
+  "best_checkpoint": {
+    "path": "/kaggle/working/outputs/abl_qlora4/checkpoint-500",
+    "step": 500,
+    "metric": "eval_loss",
+    "value": 0.02683970145881176,
+    "found": true,
+    "loaded": true
+  },
+  "wandb": {
+    "id": "pefgmq5y",
+    "url": "https://wandb.ai/hacinidjalal-djalal-ai/mathscribe/runs/pefgmq5y",
+    "project": "mathscribe",
+    "entity": "hacinidjalal-djalal-ai"
+  },
+  "gpu": "Tesla T4",
+  "gpu_total_memory_gb": 14.562,
+  "peak_reserved_memory_gb": 4.473,
+  "reserved_memory_before_train_gb": 3.766,
+  "wall_clock_s": 4042.5,
+  "total_train_s": 4042.5,
+  "cost": {
+    "gpu_hours": 1.1229,
+    "usd_per_hour": 0.35,
+    "usd": 0.393,
+    "price_source": "https://cloud.google.com/compute/gpus-pricing (Google Cloud, on-demand, GPU only)",
+    "prices_retrieved": "2026-11-07"
+  },
+  "global_step": 500,
+  "train_metrics": {
+    "train_runtime": 4033.705,
+    "train_samples_per_second": 0.992,
+    "train_steps_per_second": 0.124,
+    "total_flos": 1.7793142595782656e+16,
+    "train_loss": 0.05147529566287994,
+    "epoch": 1.0
+  },
+  "trainable_params": 38756352,
+  "total_params": 2793476608,
+  "python": "3.13.16",
+  "versions": {
+    "mathscribe": "0.1.0",
+    "unsloth": "2026.11.7",
+    "transformers": "5.17.0",
+    "trl": "1.15.0",
+    "peft": "0.21.2",
+    "torch": "2.11.0+cu130",
+    "datasets": "4.8.5"
+  },
+  "config": {
+    "run_name": "abl_qlora4",
+    "model": {
+      "name": "unsloth/Qwen3.5-4B",
+      "load_in_4bit": true,
+      "use_gradient_checkpointing": "unsloth"
+    },
+    "lora": {
+      "finetune_vision_layers": true,
+      "finetune_language_layers": true,
+      "finetune_attention_modules": true,
+      "finetune_mlp_modules": true,
+      "r": 16,
+      "lora_alpha": 16,
+      "lora_dropout": 0.0,
+      "bias": "none",
+      "use_rslora": false,
+      "use_dora": false,
+      "random_state": 2003
+    },
+    "data": {
+      "dataset": "unsloth/LaTeX_OCR",
+      "split": "train",
+      "revision": "4da395c8a0253f4f30983cf08f2480f9bafbd561",
+      "exclude": [
+        "data/testsets/latex_ocr_val.json"
+      ],
+      "max_train_samples": 4000,
+      "instruction": "Write the LaTeX representation for this image."
+    },
+    "validation": {
+      "manifest": "data/testsets/latex_ocr_val.json",
+      "samples": 200,
+      "early_stopping_patience": null,
+      "early_stopping_threshold": 0.0
+    },
+    "hub": {
+      "push": true,
+      "repo_id": "djaloul/mathscribe-abl-qlora4",
+      "private": true
+    },
+    "tracking": {
+      "enabled": true,
+      "project": "mathscribe",
+      "entity": null,
+      "group": null,
+      "tags": [
+        "phase2",
+        "ablation"
+      ]
+    },
+    "train": {
+      "output_dir": "/kaggle/working/outputs/abl_qlora4",
+      "num_train_epochs": 1,
+      "max_steps": -1,
+      "per_device_train_batch_size": 2,
+      "gradient_accumulation_steps": 4,
+      "warmup_steps": 50,
+      "learning_rate": 0.0002,
+      "lr_scheduler_type": "linear",
+      "optim": "adamw_8bit",
+      "weight_decay": 0.001,
+      "seed": 3407,
+      "max_length": 2048,
+      "logging_steps": 10,
+      "eval_strategy": "steps",
+      "eval_steps": 100,
+      "per_device_eval_batch_size": 2,
+      "prediction_loss_only": true,
+      "save_strategy": "steps",
+      "save_steps": 100,
+      "save_total_limit": 2,
+      "load_best_model_at_end": true,
+      "metric_for_best_model": "eval_loss",
+      "greater_is_better": false,
+      "restore_callback_states_from_checkpoint": true
+    }
+  }
+}
