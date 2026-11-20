@@ -98,18 +98,28 @@ What was done:
 - The ablation runner `mathscribe.ablations`: one worker for each GPU, train then val eval, `--resume-if-available`, `--dry-run`.
 - `NanGuard` stops a run at the first loss that is not finite. It does not save or push the adapter after that.
 - `notebooks/kaggle_runner.ipynb` defaults are the real ablations (all runs, 500 steps, 500 val rows, no tag).
+- The 6 ablation runs on Kaggle (2026-11-19/20). The files are in `reports/results/abl_*` and `reports/runs/`.
+- `python -m mathscribe.ablation_report` builds `reports/ablations.md` (paired Δ vs `abl_base`, cost, skipped runs).
+
+Ablation results (val, 500 rows):
+
+- No run is better than the base run (LoRA r=16): 68.0% normalized match, 82.0% render match.
+- rsLoRA is 2.6 points lower on normalized match. This is the only significant difference.
+- QLoRA 4-bit has the same quality, with 4.5 GB peak VRAM instead of about 9 GB. It is about 20% slower per step.
 
 Next steps:
 
-1. Run the real ablations on Kaggle (`TASK = "ablation"`, two T4 GPUs).
-2. Write the `reports/ablations.md` generator (no GPU).
-3. Do the full SFT run with `sft_base.yaml` and the best ablation settings.
-4. Evaluate it on val and on both test sets. Put the SFT vs zero-shot delta and the ablation table in the README.
+1. Select the settings for the full SFT run, from `reports/ablations.md`.
+2. Do the full SFT run with `sft_base.yaml` on Kaggle (`TASK = "train"`).
+3. Evaluate it on val and on both test sets. Also run `qwen35_4b_zeroshot` on the val set.
+4. Put the SFT vs zero-shot delta and the ablation table in the README.
 
 Facts to remember:
 
 - Compute is free Colab or Kaggle T4 only. A T4 has no bf16, and float16 does not work for qwen3_5, so 16-bit runs use float32.
-- On a Kaggle T4, a step takes about 14 s (validation included). The peak memory was 9.3 GB of 14.6 GB.
+- On a Kaggle T4, a step takes about 7 s with validation every 100 steps (the ablations), and about 14 s with validation every 5 steps (the check run). The peak memory was about 9.3 GB of 14.6 GB.
+- `abl_base` and `abl_rslora` continued from the Hub at step 500 in a new session. Their run files have no best checkpoint, and their peak memory is from the 3 s last session.
+- The Kaggle zip has repo paths. Unzip it in the repo root (`unzip -o`). Do not move the unpacked folder into the repo.
 - DoRA does not train here: the loss was `nan` from step 1 (Kaggle, 2026-11-17). It is in the `skipped` list.
 - The Kaggle notebook clones `BRANCH` from GitHub. Push all changes before a Kaggle run.
 - Early stopping has unit tests only. No GPU run triggered it.

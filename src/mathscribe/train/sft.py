@@ -345,7 +345,7 @@ def run(cfg: SFTRunConfig, resume_from: Path | None = None) -> dict[str, Any]:
 
         info["wandb"] = tracking.run_ref(wandb_run)
     run_info_path = cfg.output_dir / "run_info.json"
-    run_info_path.write_text(json.dumps(info, indent=2, default=str))
+    run_info_path.write_text(json.dumps(info, indent=2, default=str) + "\n")
     log.info("Run info: %s", run_info_path)
 
     from mathscribe.train.model_card import push_model_card, write_model_card

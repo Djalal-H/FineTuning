@@ -57,24 +57,39 @@ def _with_ci(result: dict[str, Any], metric: str) -> str:
     return f"{value} [{_pct(interval[0])}, {_pct(interval[1])}]"
 
 
+def paired_delta(
+    result: dict[str, Any], baseline: dict[str, Any], metric: str
+) -> tuple[float, float, float] | None:
+    """(result - baseline, low, high) on the same rows, or None if the runs are not comparable."""
+    if "per_row" not in result or "per_row" not in baseline:
+        return None
+    n_a, stats_a = run_statistics(result["per_row"])
+    n_b, stats_b = run_statistics(baseline["per_row"])
+    if n_a != n_b or metric not in stats_a or metric not in stats_b:
+        return None
+    if _scorer(result) != _scorer(baseline):
+        return None  # different normalizer or metrics: the rows are not comparable
+    if metric == "render_match" and result.get("renderer") != baseline.get("renderer"):
+        return None  # different renderer versions: the rows are not comparable
+    return paired_diff(stats_a[metric], stats_b[metric], n_a)
+
+
+def is_significant(delta: tuple[float, float, float] | None) -> bool:
+    """True when the 95% interval of a paired delta does not include 0."""
+    return delta is not None and (delta[1] > 0 or delta[2] < 0)
+
+
 def _delta_vs_baseline(result: dict[str, Any], baseline: dict[str, Any] | None, metric: str) -> str:
     if baseline is None:
         return "-"
     if result is baseline:
         return "baseline"
-    if "per_row" not in result or "per_row" not in baseline:
+    delta = paired_delta(result, baseline, metric)
+    if delta is None:
         return "-"
-    n_a, stats_a = run_statistics(result["per_row"])
-    n_b, stats_b = run_statistics(baseline["per_row"])
-    if n_a != n_b or metric not in stats_a or metric not in stats_b:
-        return "-"
-    if _scorer(result) != _scorer(baseline):
-        return "-"  # different normalizer or metrics: the rows are not comparable
-    if metric == "render_match" and result.get("renderer") != baseline.get("renderer"):
-        return "-"  # different renderer versions: the rows are not comparable
-    delta, lo, hi = paired_diff(stats_a[metric], stats_b[metric], n_a)
-    mark = " *" if lo > 0 or hi < 0 else ""
-    return f"{100 * delta:+.1f} [{100 * lo:+.1f}, {100 * hi:+.1f}]{mark}"
+    d, lo, hi = delta
+    mark = " *" if is_significant(delta) else ""
+    return f"{100 * d:+.1f} [{100 * lo:+.1f}, {100 * hi:+.1f}]{mark}"
 
 
 def _scorer(result: dict[str, Any]) -> int:
